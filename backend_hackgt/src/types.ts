@@ -284,7 +284,7 @@ export const GameQuerySchema = z.object({
 // ================================
 
 export interface BettingSimulatorInterface {
-  loadAllThresholds(): Promise<void>;
+  loadStarPlayers(): Promise<void>;
   getPlayerInfo(playerId: string): Promise<{
     expected_values: Record<string, number>;
     games_analyzed: number;
