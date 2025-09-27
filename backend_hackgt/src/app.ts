@@ -873,7 +873,7 @@ const startServer = async () => {
     bettingSimulator.loadAllThresholds()
       .then(() => {
         const loadDurationSec = ((Date.now() - thresholdsLoadStart) / 1000).toFixed(1);
-        console.log(` Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} player expected values in ${loadDurationSec}s`);
+        console.log(` ✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} player expected values in ${loadDurationSec}s`);
       })
       .catch((error) => {
         console.error('Failed to load player expected values:', error);
@@ -887,7 +887,7 @@ const startServer = async () => {
     
     // Graceful shutdown
     const gracefulShutdown = async () => {
-      console.log('\nShutting down gracefully...');
+      console.log('\n🛑 Shutting down gracefully...');
       server.close(async () => {
         await disconnectFromDatabase();
         process.exit(0);
