@@ -297,9 +297,9 @@ app.get('/player/:playerId/thresholds', handleAsync(async (req: Request, res: Re
   try {
     const { playerId } = req.params;
     
-    // Ensure thresholds are loaded
+    // Ensure expected values are loaded
     if (!bettingSimulator.areThresholdsLoaded()) {
-      console.log('Loading player thresholds...');
+      console.log('Loading player expected values...');
       await bettingSimulator.loadAllThresholds();
     }
     
@@ -307,13 +307,13 @@ app.get('/player/:playerId/thresholds', handleAsync(async (req: Request, res: Re
     const playerInfo = await bettingSimulator.getPlayerInfo(playerId);
     
     if ('error' in playerInfo) {
-      res.status(404).json({ error: `Player ${playerId} not found or no threshold data available` });
+      res.status(404).json({ error: `Player ${playerId} not found or no expected value data available` });
       return;
     }
     
     const response: PlayerThresholdResponse = {
       playerId,
-      thresholds: playerInfo.thresholds,
+      expected_values: playerInfo.expected_values,
       games_analyzed: playerInfo.games_analyzed
     };
     
@@ -340,9 +340,9 @@ app.post('/simulate', handleAsync(async (req: Request, res: Response) => {
     const request: SimulationRequest = validation.data;
     console.log(`Starting simulation: ${request.contract_length} games, ${request.parlays.length} parlay legs`);
     
-    // Ensure thresholds are loaded
+    // Ensure expected values are loaded
     if (!bettingSimulator.areThresholdsLoaded()) {
-      console.log('Loading player thresholds...');
+      console.log('Loading player expected values...');
       await bettingSimulator.loadAllThresholds();
     }
     
@@ -444,10 +444,10 @@ const startServer = async () => {
     // Connect to database
     await connectToDatabase();
     
-    // Load player thresholds in background
-    console.log('🔄 Loading player thresholds...');
+    // Load player expected values in background
+    console.log('🔄 Loading player expected values...');
     await bettingSimulator.loadAllThresholds();
-    console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} player thresholds`);
+    console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} player expected values`);
     
     // Start server
     const server = app.listen(config.port, () => {

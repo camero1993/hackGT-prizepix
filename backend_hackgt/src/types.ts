@@ -127,7 +127,7 @@ export interface SimulationResponse {
 
 export interface PlayerThresholdResponse {
   playerId: string;
-  thresholds: Record<string, number>;
+  expected_values: Record<string, number>;
   games_analyzed: number;
 }
 
@@ -203,7 +203,7 @@ export const GameQuerySchema = z.object({
 export interface BettingSimulatorInterface {
   loadAllThresholds(): Promise<void>;
   getPlayerInfo(playerId: string): Promise<{
-    thresholds: Record<string, number>;
+    expected_values: Record<string, number>;
     games_analyzed: number;
   } | { error: string }>;
   simulateContract(contractLength: number, parlays: Parlay[]): Promise<ContractResult>;

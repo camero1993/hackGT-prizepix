@@ -15,8 +15,10 @@ export interface Config {
 
 // Get configuration from environment variables
 export const config: Config = {
-  mongoUri: process.env.MONGO_URI || 'mongodb+srv://hackgt-user:WPtyJL20w9uBdNj1@cluster0.6yqkrhl.mongodb.net/?',
-  dbName: process.env.DB_NAME || 'betting_app',
+  mongoUri: process.env.MONGO_URI || (() => {
+    throw new Error('MONGO_URI environment variable is required');
+  })(),
+  dbName: process.env.DB_NAME || 'nba',
   port: parseInt(process.env.PORT || '8000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
   corsOrigin: process.env.CORS_ORIGIN || '*'

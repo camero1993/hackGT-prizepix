@@ -63,7 +63,7 @@ const PlayerGameStatsSchema = new mongoose.Schema({
 const PlayerModel = mongoose.model<Player & Document>('Player', PlayerSchema);
 const TeamModel = mongoose.model<Team & Document>('Team', TeamSchema);
 const GameModel = mongoose.model<Game & Document>('Game', GameSchema);
-const PlayerGameStatsModel = mongoose.model<PlayerStats & Document>('PlayerGameStats', PlayerGameStatsSchema);
+const PlayerGameStatsModel = mongoose.model<PlayerStats & Document>('playerGameStats', PlayerGameStatsSchema);
 
 export class BettingSimulator implements BettingSimulatorInterface {
   private playerThresholds: PlayerThresholds = {};
@@ -78,7 +78,7 @@ export class BettingSimulator implements BettingSimulatorInterface {
    */
   async loadAllThresholds(): Promise<void> {
     try {
-      console.log('🔄 Loading player thresholds...');
+      console.log('🔄 Loading player expected values (betting lines)...');
       
       // Get all active players
       const players = await PlayerModel.find({ active: true }).select('_id');
@@ -86,15 +86,15 @@ export class BettingSimulator implements BettingSimulatorInterface {
       
       console.log(`Found ${playerIds.length} active players`);
       
-      // Calculate thresholds for each player
+      // Calculate expected values for each player
       for (const playerId of playerIds) {
-        const thresholds = await this.calculatePlayerThresholds(playerId);
-        if (thresholds) {
-          this.playerThresholds[playerId] = thresholds;
+        const expectedValues = await this.calculatePlayerExpectedValues(playerId);
+        if (expectedValues) {
+          this.playerThresholds[playerId] = expectedValues;
         }
       }
       
-      console.log(`✅ Loaded thresholds for ${Object.keys(this.playerThresholds).length} players`);
+      console.log(`✅ Loaded expected values for ${Object.keys(this.playerThresholds).length} players`);
     } catch (error) {
       console.error('Error loading player thresholds:', error);
       throw error;
@@ -102,9 +102,9 @@ export class BettingSimulator implements BettingSimulatorInterface {
   }
 
   /**
-   * Calculate betting thresholds for a specific player
+   * Calculate expected values (betting lines) for a specific player
    */
-  private async calculatePlayerThresholds(playerId: string): Promise<{ points: number; rebounds: number; assists: number } | null> {
+  private async calculatePlayerExpectedValues(playerId: string): Promise<{ points: number; rebounds: number; assists: number } | null> {
     try {
       // Get recent player stats (last 20 games)
       const recentStats = await PlayerGameStatsModel
@@ -116,42 +116,41 @@ export class BettingSimulator implements BettingSimulatorInterface {
         return null; // Not enough data
       }
 
-      // Calculate 75th percentile for each stat
-      const points = recentStats.map(s => s.points).sort((a, b) => a - b);
-      const rebounds = recentStats.map(s => s.rebounds).sort((a, b) => a - b);
-      const assists = recentStats.map(s => s.assists).sort((a, b) => a - b);
+      // Calculate expected value (mean) for each stat
+      const points = recentStats.map(s => s.points);
+      const rebounds = recentStats.map(s => s.rebounds);
+      const assists = recentStats.map(s => s.assists);
 
-      const getPercentile = (arr: number[], percentile: number): number => {
-        const index = Math.ceil((percentile / 100) * arr.length) - 1;
-        return arr[Math.max(0, index)];
+      const calculateMean = (arr: number[]): number => {
+        return arr.reduce((sum, val) => sum + val, 0) / arr.length;
       };
 
       return {
-        points: getPercentile(points, 75),
-        rebounds: getPercentile(rebounds, 75),
-        assists: getPercentile(assists, 75)
+        points: Math.round(calculateMean(points) * 10) / 10, // Round to 1 decimal
+        rebounds: Math.round(calculateMean(rebounds) * 10) / 10,
+        assists: Math.round(calculateMean(assists) * 10) / 10
       };
     } catch (error) {
-      console.error(`Error calculating thresholds for player ${playerId}:`, error);
+      console.error(`Error calculating expected values for player ${playerId}:`, error);
       return null;
     }
   }
 
   /**
-   * Get player information including thresholds
+   * Get player information including expected values (betting lines)
    */
   async getPlayerInfo(playerId: string): Promise<{
-    thresholds: Record<string, number>;
+    expected_values: Record<string, number>;
     games_analyzed: number;
   } | { error: string }> {
     try {
-      // Ensure thresholds are loaded
+      // Ensure expected values are loaded
       if (Object.keys(this.playerThresholds).length === 0) {
         await this.loadAllThresholds();
       }
 
-      const playerThresholds = this.playerThresholds[playerId];
-      if (!playerThresholds) {
+      const playerExpectedValues = this.playerThresholds[playerId];
+      if (!playerExpectedValues) {
         return { error: 'Player not found or insufficient data' };
       }
 
@@ -159,10 +158,10 @@ export class BettingSimulator implements BettingSimulatorInterface {
       const gamesAnalyzed = await PlayerGameStatsModel.countDocuments({ playerId });
 
       return {
-        thresholds: {
-          points: playerThresholds.points,
-          rebounds: playerThresholds.rebounds,
-          assists: playerThresholds.assists
+        expected_values: {
+          points: playerExpectedValues.points,
+          rebounds: playerExpectedValues.rebounds,
+          assists: playerExpectedValues.assists
         },
         games_analyzed: gamesAnalyzed
       };
@@ -245,21 +244,21 @@ export class BettingSimulator implements BettingSimulatorInterface {
     const outcomes: ParlayOutcome[] = [];
     let allHits = true;
 
-    // Simulate each parlay leg
+    // Simulate each parlay leg (all bets are "over" bets)
     for (const parlay of parlays) {
-      const threshold = this.playerThresholds[parlay.playerId]?.[parlay.stat as StatType];
-      if (!threshold) {
-        throw new Error(`No threshold data for player ${parlay.playerId} stat ${parlay.stat}`);
+      const expectedValue = this.playerThresholds[parlay.playerId]?.[parlay.stat as StatType];
+      if (!expectedValue) {
+        throw new Error(`No expected value data for player ${parlay.playerId} stat ${parlay.stat}`);
       }
 
       // Get actual performance (simulated for now - in real implementation, use actual game data)
       const actual = this.simulatePlayerPerformance(parlay.playerId, parlay.stat as StatType);
-      const hit = actual >= threshold;
+      const hit = actual > expectedValue; // "Over" bet: actual must exceed expected value
 
       outcomes.push({
         playerId: parlay.playerId,
         stat: parlay.stat,
-        threshold,
+        threshold: expectedValue, // Keep threshold field for API compatibility
         actual,
         hit
       });
@@ -292,19 +291,23 @@ export class BettingSimulator implements BettingSimulatorInterface {
    * In a real implementation, this would use actual game data
    */
   private simulatePlayerPerformance(playerId: string, stat: StatType): number {
-    const thresholds = this.playerThresholds[playerId];
-    if (!thresholds) {
+    const expectedValues = this.playerThresholds[playerId];
+    if (!expectedValues) {
       return 0;
     }
 
-    const threshold = thresholds[stat];
+    const expectedValue = expectedValues[stat];
     
-    // Simulate performance with some randomness around the threshold
-    const basePerformance = threshold * 0.8; // Start below threshold
-    const variance = threshold * 0.4; // Add variance
+    // Simulate performance with realistic variance around the expected value
+    // Using a normal distribution approximation with some skew
+    const basePerformance = expectedValue;
+    const variance = expectedValue * 0.3; // 30% variance
     const randomFactor = (Math.random() - 0.5) * 2; // -1 to 1
     
-    return Math.max(0, Math.round(basePerformance + (variance * randomFactor)));
+    // Add slight positive skew to make "over" bets more interesting
+    const skewFactor = Math.random() < 0.3 ? 0.2 : 0; // 30% chance of slight boost
+    
+    return Math.max(0, Math.round(basePerformance + (variance * randomFactor) + (expectedValue * skewFactor)));
   }
 
   /**
