@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Search, TrendingUp, TrendingDown, ArrowLeft } from "lucide-react"
 import { Line, LineChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, ReferenceLine } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,18 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import Link from "next/link"
+import { searchPlayers, getTeamById, Player, Team } from "@/lib/api"
 
 // Mock data for player stock price
 const stockData = [
   { date: "Jan 1", price: 45.2, volume: 1200 },
-  { date: "Jan 8", price: 48.1, volume: 1450 },
-  { date: "Jan 15", price: 52.3, volume: 1680 },
-  { date: "Jan 22", price: 49.7, volume: 1320 },
-  { date: "Jan 29", price: 55.8, volume: 1890 },
-  { date: "Feb 5", price: 58.2, volume: 2100 },
-  { date: "Feb 12", price: 61.4, volume: 2350 },
-  { date: "Feb 19", price: 59.1, volume: 1980 },
-  { date: "Feb 26", price: 63.7, volume: 2450 },
+
   { date: "Mar 5", price: 67.2, volume: 2680 },
 ]
 
@@ -43,8 +37,14 @@ export default function PlayerPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedStat, setSelectedStat] = useState("touchdowns")
   const [buyAmount, setBuyAmount] = useState("")
-  
-  const selectedPlayer = {
+  const [searchResults, setSearchResults] = useState<Player[]>([])
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const [showSearchResults, setShowSearchResults] = useState(false)
+
+  // Default player data (Josh Allen fallback)
+  const defaultPlayerData = {
     name: "Josh Allen",
     position: "QB",
     team: "Buffalo Bills",
@@ -56,7 +56,87 @@ export default function PlayerPage() {
     image: "/placeholder.svg",
   }
 
-  const currentHoldings = portfolioData.find((p) => p.player === selectedPlayer.name)
+  // Search for players with debouncing
+  const searchPlayersDebounced = useCallback(
+    async (query: string) => {
+      if (!query.trim()) {
+        setSearchResults([])
+        setShowSearchResults(false)
+        return
+      }
+
+      setIsSearching(true)
+      try {
+        const results = await searchPlayers(query, 10)
+        setSearchResults(results)
+        setShowSearchResults(true)
+      } catch (error) {
+        console.error('Search failed:', error)
+        setSearchResults([])
+      } finally {
+        setIsSearching(false)
+      }
+    },
+    []
+  )
+
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value
+    setSearchQuery(query)
+    
+    // Debounce search
+    const timeoutId = setTimeout(() => {
+      searchPlayersDebounced(query)
+    }, 300)
+
+    return () => clearTimeout(timeoutId)
+  }
+
+  // Handle player selection
+  const handlePlayerSelect = async (player: Player) => {
+    setSelectedPlayer(player)
+    setSearchQuery(player.fullName)
+    setShowSearchResults(false)
+    
+    // Fetch team data if available
+    if (player.teamId) {
+      try {
+        const team = await getTeamById(player.teamId)
+        setSelectedTeam(team)
+      } catch (error) {
+        console.error('Failed to fetch team:', error)
+      }
+    }
+  }
+
+  // Get display data (use selected player or default)
+  // Close search results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element
+      if (!target.closest('.search-container')) {
+        setShowSearchResults(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const displayPlayer = selectedPlayer ? {
+    name: selectedPlayer.fullName,
+    position: selectedPlayer.position || "Unknown",
+    team: selectedTeam ? `${selectedTeam.city} ${selectedTeam.name}` : "Unknown Team",
+    nextGame: "vs TBD", // Would need game data
+    gameDate: "TBD",
+    currentPrice: 67.2, // Mock price data
+    change: 4.5,
+    changePercent: 7.2,
+    image: selectedPlayer.headshotUrl || "/placeholder.svg",
+  } : defaultPlayerData
+
+  const currentHoldings = portfolioData.find((p) => p.player === displayPlayer.name)
 
   return (
     <div className="dark min-h-screen bg-background">
@@ -70,15 +150,61 @@ export default function PlayerPage() {
                 Back to Portfolio
               </Button>
             </Link>
-            <div className="flex-1 max-w-md relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search players..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+            <div className="flex-1 max-w-md relative search-container">
+  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+  <Input
+    placeholder="Search players..."
+    value={searchQuery}
+    onChange={(e) => {
+      setSearchQuery(e.target.value);
+
+      // Debounce properly
+      if ((window as any).searchTimeout) {
+        clearTimeout((window as any).searchTimeout);
+      }
+      (window as any).searchTimeout = setTimeout(() => {
+        searchPlayersDebounced(e.target.value);
+      }, 300);
+    }}
+    onFocus={() => searchResults.length > 0 && setShowSearchResults(true)}
+    className="pl-10 text-white placeholder-gray-400 bg-black"
+  />
+
+  {/* Autocomplete Dropdown */}
+  {showSearchResults && (
+    <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-lg z-20 max-h-60 overflow-y-auto">
+      {isSearching ? (
+        <div className="p-3 text-center text-muted-foreground">
+          Searching...
+        </div>
+      ) : searchResults.length > 0 ? (
+        searchResults.map((player) => (
+          <button
+            key={player.id}
+            onClick={() => handlePlayerSelect(player)}
+            className="w-full text-left p-3 hover:bg-muted/50 border-b border-border last:border-b-0 flex items-center gap-3"
+          >
+            <img
+              src={player.headshotUrl || "/placeholder.svg"}
+              alt={player.fullName}
+              className="w-8 h-8 rounded-full object-cover bg-muted"
+            />
+            <div>
+              <div className="font-medium text-foreground">{player.fullName}</div>
+              <div className="text-sm text-muted-foreground">
+                {player.position || "Unknown Position"}
+              </div>
             </div>
+          </button>
+        ))
+      ) : (
+        <div className="p-3 text-center text-muted-foreground">
+          No players found
+        </div>
+      )}
+    </div>
+  )}
+</div>
           </div>
         </div>
       </div>
@@ -90,37 +216,37 @@ export default function PlayerPage() {
             {/* Player Card */}
             <Card className="bg-card border-border">
               <CardContent className="p-6">
-                <div className="flex items-start gap-6">
+                  <div className="flex items-start gap-6">
                   <img
-                    src={selectedPlayer.image}
-                    alt={selectedPlayer.name}
+                    src={displayPlayer.image}
+                    alt={displayPlayer.name}
                     className="w-24 h-24 rounded-lg object-cover bg-muted"
                   />
                   <div className="flex-1">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h1 className="text-2xl font-bold text-foreground">{selectedPlayer.name}</h1>
+                        <h1 className="text-2xl font-bold text-foreground">{displayPlayer.name}</h1>
                         <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="secondary">{selectedPlayer.position}</Badge>
-                          <span className="text-muted-foreground">{selectedPlayer.team}</span>
+                          <Badge variant="secondary">{displayPlayer.position}</Badge>
+                          <span className="text-muted-foreground">{displayPlayer.team}</span>
                         </div>
                         <p className="text-sm text-muted-foreground mt-2">
-                          Next: {selectedPlayer.nextGame} • {selectedPlayer.gameDate}
+                          Next: {displayPlayer.nextGame} • {displayPlayer.gameDate}
                         </p>
                       </div>
                       <div className="text-right">
-                        <div className="text-3xl font-bold text-foreground">${selectedPlayer.currentPrice}</div>
+                        <div className="text-3xl font-bold text-foreground">${displayPlayer.currentPrice}</div>
                         <div
-                          className={`flex items-center gap-1 ${selectedPlayer.change >= 0 ? "text-green-500" : "text-red-500"}`}
+                          className={`flex items-center gap-1 ${displayPlayer.change >= 0 ? "text-green-500" : "text-red-500"}`}
                         >
-                          {selectedPlayer.change >= 0 ? (
+                          {displayPlayer.change >= 0 ? (
                             <TrendingUp className="h-4 w-4" />
                           ) : (
                             <TrendingDown className="h-4 w-4" />
                           )}
                           <span className="font-medium">
-                            {selectedPlayer.change >= 0 ? "+" : ""}
-                            {selectedPlayer.change} ({selectedPlayer.changePercent}%)
+                            {displayPlayer.change >= 0 ? "+" : ""}
+                            {displayPlayer.change} ({displayPlayer.changePercent}%)
                           </span>
                         </div>
                       </div>
@@ -221,7 +347,7 @@ export default function PlayerPage() {
 
                   <div className="space-y-2">
                     <Button className="w-full text-white" size="lg">
-                      Place Bet - ${selectedPlayer.currentPrice}
+                      Place Bet - ${displayPlayer.currentPrice}
                     </Button>
                     <div className="grid grid-cols-2 gap-2">
                       <Button variant="outline" size="sm" className="text-green-400 border-green-500 hover:bg-green-500 hover:text-white">

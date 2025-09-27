@@ -16,11 +16,20 @@ import {
   SimulationRequestSchema,
   PlayerQuerySchema,
   GameQuerySchema,
+  TeamPlayersQuerySchema,
+  PlayerStatsQuerySchema,
+  TeamGamesQuerySchema,
+  PlayerWithTeamResponse,
+  PlayerStatsResponse,
+  EnrichedPlayerStatsResponse,
+  TeamGameResponse,
+  EnrichedTeamGameResponse,
   TimeState,
   TimeAdvanceRequest,
   TimeSetRequest
 } from './types';
 import { simulatedTimeService } from './services/SimulatedTimeService';
+import { dbService } from './services/dbService';
 import mongoose from 'mongoose';
 
 // Initialize Express app
@@ -38,7 +47,7 @@ app.use(helmet());
 
 // CORS middleware
 app.use(cors({
-  origin: config.corsOrigin,
+  origin:"*",
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -102,12 +111,24 @@ app.get('/', (req: Request, res: Response) => {
     data: {
       version: '1.0.0',
       endpoints: {
+        // Legacy endpoints
         players: '/players',
         teams: '/teams',
         games: '/games',
         simulate: '/simulate',
         player_thresholds: '/player/:playerId/thresholds',
         health: '/health',
+        
+        // Enhanced API endpoints
+        enhanced_api: {
+          search_players: '/api/players?search=name',
+          players_by_team: '/players?teamId=1610612744',
+          player_stats: '/api/player/:id/stats?season=2024-25&enriched=true',
+          team_games: '/api/team/:id/games?season=2024-25&enriched=true',
+          recent_games: '/api/games/recent?limit=20'
+        },
+        
+        // Time management
         time_management: {
           get_time: '/time',
           set_time: '/time/set',
@@ -155,10 +176,30 @@ app.get('/players', handleAsync(async (req: Request, res: Response) => {
       return;
     }
 
-    const { active_only, limit } = queryValidation.data;
+    const { active_only, search, limit } = queryValidation.data;
+    const { teamId } = req.query;
     
-    // Build query
-    const query = active_only ? { active: true } : {};
+    // If teamId is provided, use the enhanced search with team info
+    if (teamId) {
+      try {
+        const players = await dbService.getPlayersByTeam(teamId as string, limit);
+        const response: PlayerResponse[] = players.map(convertPlayerToResponse);
+        res.json(response);
+        return;
+      } catch (error) {
+        console.error('Error fetching players by team:', error);
+        res.status(500).json({ error: 'Failed to fetch players by team' });
+        return;
+      }
+    }
+    
+    // Build query for regular search
+    const query: any = active_only ? { active: true } : {};
+    
+    // Add search functionality
+    if (search) {
+      query.fullName = { $regex: search, $options: 'i' }; // Case-insensitive search
+    }
     
     // Check database connection
     if (!mongoose.connection.db) {
@@ -434,6 +475,212 @@ app.get('/simulate/example', handleAsync(async (req: Request, res: Response) => 
 }));
 
 // ================================
+// Enhanced API Endpoints
+// ================================
+
+// Get players with team information (enhanced search)
+app.get('/api/players', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { search, limit = '20' } = req.query;
+    
+    if (!search) {
+      res.status(400).json({ error: 'Search query is required for enhanced player search' });
+      return;
+    }
+    
+    const players = await dbService.searchPlayersWithTeam(search as string, parseInt(limit as string));
+    const response: PlayerWithTeamResponse[] = players.map(player => ({
+      id: player._id,
+      fullName: player.fullName,
+      headshotUrl: player.headshotUrl,
+      position: player.position,
+      teamId: player.currentTeamId,
+      active: player.active,
+      teamName: player.teamName,
+      teamTricode: player.teamTricode,
+      teamCity: player.teamCity
+    }));
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Error in enhanced player search:', error);
+    res.status(500).json({ error: 'Failed to search players' });
+  }
+}));
+
+// Get player stats
+app.get('/api/player/:id/stats', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { id: playerId } = req.params;
+    
+    // Validate query parameters
+    const queryValidation = PlayerStatsQuerySchema.safeParse(req.query);
+    if (!queryValidation.success) {
+      res.status(400).json({
+        error: 'Invalid query parameters',
+        details: queryValidation.error.errors
+      });
+      return;
+    }
+
+    const { season, startDate, endDate, limit, enriched } = queryValidation.data;
+    
+    if (enriched) {
+      // Return enriched stats with player, team, and game info
+      const stats = await dbService.getEnrichedPlayerStats(playerId, {
+        season,
+        startDate,
+        endDate,
+        limit
+      });
+      
+      const response: EnrichedPlayerStatsResponse[] = stats.map(stat => ({
+        _id: stat._id,
+        gameId: stat.gameId,
+        playerId: stat.playerId,
+        playerName: stat.playerName,
+        playerPosition: stat.playerPosition,
+        teamId: stat.teamId,
+        teamName: stat.teamName,
+        teamTricode: stat.teamTricode,
+        opponentTeamId: stat.opponentTeamId,
+        opponentTeamName: stat.opponentTeamName,
+        opponentTricode: stat.opponentTricode,
+        gameDateUTC: stat.gameDateUTC.toISOString(),
+        season: stat.season,
+        seasonType: stat.seasonType,
+        points: stat.points,
+        rebounds: stat.rebounds,
+        assists: stat.assists,
+        gameStatus: stat.gameStatus,
+        homeScore: stat.homeScore,
+        awayScore: stat.awayScore,
+        venue: stat.venue
+      }));
+      
+      res.json(response);
+    } else {
+      // Return basic stats
+      const stats = await dbService.getPlayerStats(playerId, {
+        season,
+        startDate,
+        endDate,
+        limit
+      });
+      
+      const response: PlayerStatsResponse[] = stats.map(stat => ({
+        _id: stat._id,
+        gameId: stat.gameId,
+        playerId: stat.playerId,
+        teamId: stat.teamId,
+        opponentTeamId: stat.opponentTeamId,
+        gameDateUTC: stat.gameDateUTC.toISOString(),
+        season: stat.season,
+        seasonType: stat.seasonType,
+        points: stat.points,
+        rebounds: stat.rebounds,
+        assists: stat.assists
+      }));
+      
+      res.json(response);
+    }
+  } catch (error) {
+    console.error('Error fetching player stats:', error);
+    res.status(500).json({ error: 'Failed to fetch player stats' });
+  }
+}));
+
+// Get team games
+app.get('/api/team/:id/games', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { id: teamId } = req.params;
+    
+    // Validate query parameters
+    const queryValidation = TeamGamesQuerySchema.safeParse(req.query);
+    if (!queryValidation.success) {
+      res.status(400).json({
+        error: 'Invalid query parameters',
+        details: queryValidation.error.errors
+      });
+      return;
+    }
+
+    const { season, startDate, endDate, limit, enriched } = queryValidation.data;
+    
+    if (enriched) {
+      // Return enriched games with team names
+      const games = await dbService.getEnrichedTeamGames(teamId, {
+        season,
+        startDate,
+        endDate,
+        limit
+      });
+      
+      const response: EnrichedTeamGameResponse[] = games.map(game => ({
+        id: game._id,
+        season: game.season,
+        seasonType: game.seasonType,
+        gameDateUTC: game.gameDateUTC.toISOString(),
+        homeTeamId: game.homeTeamId,
+        homeTeamName: game.homeTeamName,
+        homeTricode: game.homeTricode,
+        awayTeamId: game.awayTeamId,
+        awayTeamName: game.awayTeamName,
+        awayTricode: game.awayTricode,
+        homeScore: game.homeScore,
+        awayScore: game.awayScore,
+        status: game.status,
+        venue: game.venue || 'Unknown',
+        isHomeGame: game.isHomeGame
+      }));
+      
+      res.json(response);
+    } else {
+      // Return basic games
+      const games = await dbService.getTeamGames(teamId, {
+        season,
+        startDate,
+        endDate,
+        limit
+      });
+      
+      const response: TeamGameResponse[] = games.map(game => ({
+        id: game._id,
+        season: game.season,
+        seasonType: game.seasonType,
+        gameDateUTC: game.gameDateUTC.toISOString(),
+        homeTeamId: game.homeTeamId,
+        awayTeamId: game.awayTeamId,
+        homeScore: game.homeScore,
+        awayScore: game.awayScore,
+        status: game.status,
+        venue: game.venue,
+        isHomeGame: game.homeTeamId === teamId
+      }));
+      
+      res.json(response);
+    }
+  } catch (error) {
+    console.error('Error fetching team games:', error);
+    res.status(500).json({ error: 'Failed to fetch team games' });
+  }
+}));
+
+// Get recent games (dashboard endpoint)
+app.get('/api/games/recent', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 20;
+    const games = await dbService.getRecentGames(limit);
+    
+    const response: GameResponse[] = games.map(convertGameToResponse);
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching recent games:', error);
+    res.status(500).json({ error: 'Failed to fetch recent games' });
+  }
+}));
+
+// ================================
 // Time Management Endpoints
 // ================================
 
@@ -620,19 +867,27 @@ const startServer = async () => {
     await connectToDatabase();
     
     // Load player expected values in background
-    console.log('🔄 Loading player expected values...');
-    await bettingSimulator.loadAllThresholds();
-    console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} player expected values`);
+    // Kick off player expected value loading without blocking startup
+    console.log(' Loading player expected values in background...');
+    const thresholdsLoadStart = Date.now();
+    bettingSimulator.loadAllThresholds()
+      .then(() => {
+        const loadDurationSec = ((Date.now() - thresholdsLoadStart) / 1000).toFixed(1);
+        console.log(` Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} player expected values in ${loadDurationSec}s`);
+      })
+      .catch((error) => {
+        console.error('Failed to load player expected values:', error);
+      });
     
     // Start server
     const server = app.listen(config.port, () => {
-      console.log(`✅ Server running on port ${config.port}`);
-      console.log(`📚 API Documentation: http://localhost:${config.port}/`);
+      console.log(` Server running on port ${config.port}`);
+      console.log(`API Documentation: http://localhost:${config.port}/`);
     });
     
     // Graceful shutdown
     const gracefulShutdown = async () => {
-      console.log('\n🛑 Shutting down gracefully...');
+      console.log('\nShutting down gracefully...');
       server.close(async () => {
         await disconnectFromDatabase();
         process.exit(0);
@@ -643,7 +898,7 @@ const startServer = async () => {
     process.on('SIGINT', gracefulShutdown);
     
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    console.error('Failed to start server:', error);
     process.exit(1);
   }
 };

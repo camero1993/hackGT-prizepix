@@ -80,10 +80,10 @@ export class MultiplierCalculator {
 
   /**
    * Calculate Flex Play multiplier based on actual PrizePicks structure
-   * 3-pick: 3/3 = 3x, 2/3 = 1x (push to entry)
-   * 4-pick: 4/4 = 6x, 3/4 = 1.5x
-   * 5-pick: 5/5 = 10x, 4/5 = 2x, 3/5 = 0.4x
-   * 6-pick: 6/6 = 25x, 5/6 = 2x, 4/6 = 0.4x
+   * 3-pick: 3/3 = 4x, 2/3 = 2x ,1/3 = 0x(push to entry)
+   * 4-pick: 4/4 = 8x, 3/4 = 3x, 1/4 = 0.5x
+   * 5-pick: 5/5 = 20x, 4/5 = 12x, 1/5 = 0.2x
+   * 6-pick: 6/6 = 35x, 5/6 = 20x, 
    */
   private static calculateFlexMultiplier(pickCount: number, hits: number): number {
     const flexMultipliers: { [key: number]: { [key: number]: number } } = {

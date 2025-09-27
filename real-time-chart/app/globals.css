@@ -112,6 +112,11 @@
 }
 
 @layer base {
+
+  input, input[type="search"], textarea {
+    color: hsl(0 0% 98%) !important; /* pure white */
+  }
+  
   * {
     @apply border-border;
   }

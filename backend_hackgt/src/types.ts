@@ -31,7 +31,7 @@ export interface Game {
   homeScore?: number;
   awayScore?: number;
   status: string;
-  venue: string;
+  venue?: string;
 }
 
 export interface PlayerStats {
@@ -79,7 +79,7 @@ export interface GameResponse {
   homeScore?: number;
   awayScore?: number;
   status: string;
-  venue: string;
+  venue?: string;
 }
 
 export interface ParlayOutcome {
@@ -147,6 +147,51 @@ export interface ApiResponse<T = any> {
   error?: string;
 }
 
+// Enhanced response interfaces
+export interface PlayerWithTeamResponse extends PlayerResponse {
+  teamName?: string;
+  teamTricode?: string;
+  teamCity?: string;
+}
+
+export interface PlayerStatsResponse {
+  _id: string;
+  gameId: string;
+  playerId: string;
+  teamId: string;
+  opponentTeamId: string;
+  gameDateUTC: string;
+  season: string;
+  seasonType: string;
+  points: number;
+  rebounds: number;
+  assists: number;
+}
+
+export interface EnrichedPlayerStatsResponse extends PlayerStatsResponse {
+  playerName: string;
+  playerPosition?: string;
+  teamName: string;
+  teamTricode: string;
+  opponentTeamName: string;
+  opponentTricode: string;
+  gameStatus: string;
+  homeScore?: number;
+  awayScore?: number;
+  venue?: string;
+}
+
+export interface TeamGameResponse extends GameResponse {
+  isHomeGame: boolean;
+}
+
+export interface EnrichedTeamGameResponse extends TeamGameResponse {
+  homeTeamName: string;
+  homeTricode: string;
+  awayTeamName: string;
+  awayTricode: string;
+}
+
 // ================================
 // Request Models
 // ================================
@@ -188,6 +233,7 @@ export const SimulationRequestSchema = z.object({
 
 export const PlayerQuerySchema = z.object({
   active_only: z.string().optional().transform(val => val === 'true'),
+  search: z.string().optional(),
   limit: z.string().optional().transform(val => {
     const num = parseInt(val || '100', 10);
     return Math.min(Math.max(num, 1), 500);
@@ -199,6 +245,37 @@ export const GameQuerySchema = z.object({
     const num = parseInt(val || '20', 10);
     return Math.min(Math.max(num, 1), 100);
   })
+});
+
+// New query schemas for enhanced endpoints
+export const TeamPlayersQuerySchema = z.object({
+  teamId: z.string().min(1, 'Team ID is required'),
+  limit: z.string().optional().transform(val => {
+    const num = parseInt(val || '50', 10);
+    return Math.min(Math.max(num, 1), 100);
+  })
+});
+
+export const PlayerStatsQuerySchema = z.object({
+  season: z.string().optional(),
+  startDate: z.string().optional().transform(val => val ? new Date(val) : undefined),
+  endDate: z.string().optional().transform(val => val ? new Date(val) : undefined),
+  limit: z.string().optional().transform(val => {
+    const num = parseInt(val || '50', 10);
+    return Math.min(Math.max(num, 1), 100);
+  }),
+  enriched: z.string().optional().transform(val => val === 'true')
+});
+
+export const TeamGamesQuerySchema = z.object({
+  season: z.string().optional(),
+  startDate: z.string().optional().transform(val => val ? new Date(val) : undefined),
+  endDate: z.string().optional().transform(val => val ? new Date(val) : undefined),
+  limit: z.string().optional().transform(val => {
+    const num = parseInt(val || '50', 10);
+    return Math.min(Math.max(num, 1), 100);
+  }),
+  enriched: z.string().optional().transform(val => val === 'true')
 });
 
 // ================================
