@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TrendingUp, TrendingDown, Activity, DollarSign, Target, Trophy, BarChart3 } from "lucide-react"
@@ -54,6 +54,44 @@ const mockBetHoldings = [
 
 export default function SportsTrading() {
   const [selectedTab, setSelectedTab] = useState("portfolio")
+  const parallaxRef = useRef<HTMLDivElement>(null)
+
+  // Parallax effect
+  useEffect(() => {
+    const handleScroll = () => {
+      if (parallaxRef.current) {
+        const scrolled = window.pageYOffset
+        const bannerHeight = 400 // Match the banner height
+        const bannerElement = parallaxRef.current.parentElement
+        
+        if (bannerElement) {
+          const bannerRect = bannerElement.getBoundingClientRect()
+          const bannerOffsetTop = bannerElement.offsetTop
+          const bannerBottom = bannerOffsetTop + bannerHeight
+          
+          // Only apply parallax while the banner is in view and not completely scrolled past
+          if (scrolled < bannerBottom && bannerRect.bottom > 0) {
+            // Calculate parallax movement based on how much we've scrolled within the banner area
+            const scrollProgress = Math.min(scrolled / bannerBottom, 1)
+            const rate = scrollProgress * bannerHeight * -0.2 // Gentle parallax based on scroll progress
+            
+            // Constrain the movement to prevent going out of bounds
+            const maxMove = bannerHeight * 0.25
+            const constrainedRate = Math.max(-maxMove, Math.min(0, rate))
+            
+            parallaxRef.current.style.transform = `translateY(${constrainedRate}px)`
+          } else if (scrolled >= bannerBottom) {
+            // Stop parallax movement when completely past the banner
+            const finalPosition = bannerHeight * -0.25
+            parallaxRef.current.style.transform = `translateY(${finalPosition}px)`
+          }
+        }
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   // Calculate portfolio totals
   const totalValue = mockBetHoldings.reduce((sum, bet) => sum + bet.currentValue, 0)
@@ -69,20 +107,33 @@ export default function SportsTrading() {
       <SportsNavigation />
 
       <main className="container mx-auto px-4 py-6">
-        {/* Hero Section */}
+        {/* Hero Section with Parallax */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-4xl font-sports text-foreground mb-2">SPORTS PORTFOLIO</h1>
-              <p className="text-muted-foreground text-lg">
-                Trade your bets like stocks. Track performance in real-time.
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-foreground">${totalValue.toLocaleString()}</div>
-              <div className={`flex items-center justify-end ${totalChange >= 0 ? "text-green-500" : "text-red-500"}`}>
-                {totalChange >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
-                ${Math.abs(totalChange).toFixed(0)} ({totalChangePercent.toFixed(1)}%)
+          <div className="relative h-[400px] rounded-lg overflow-hidden mb-6">
+            <div 
+              ref={parallaxRef}
+              className="parallax-element absolute inset-0 bg-cover bg-center"
+              style={{
+                backgroundImage: "url('/american-football-player-mixed-media-600nw-1926986162.jpg copy.png')",
+                height: '130%',
+                width: '100%',
+                top: '-15%',
+                left: '0'
+              }}
+            />
+            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-between px-8">
+              <div className="text-white">
+                <h1 className="text-5xl font-sports mb-3">SPORTS PORTFOLIO</h1>
+                <p className="text-xl text-gray-200">
+                  Trade your bets like stocks. Track performance in real-time.
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-4xl font-bold text-white">${totalValue.toLocaleString()}</div>
+                <div className={`flex items-center justify-end text-lg ${totalChange >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {totalChange >= 0 ? <TrendingUp className="w-5 h-5 mr-2" /> : <TrendingDown className="w-5 h-5 mr-2" />}
+                  ${Math.abs(totalChange).toFixed(0)} ({totalChangePercent.toFixed(1)}%)
+                </div>
               </div>
             </div>
           </div>
@@ -192,6 +243,32 @@ export default function SportsTrading() {
             </Card>
           </TabsContent>
         </Tabs>
+        <div className="py-12">
+            <h2 className="text-3xl font-sports text-foreground mb-6 text-center">Why Choose SPORTFOLIO?</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card className="bg-card border-border">
+                <CardContent className="p-6 text-center">
+                  <Trophy className="w-12 h-12 text-primary mx-auto mb-4" />
+                  <h3 className="text-xl font-bold mb-2">Real-Time Tracking</h3>
+                  <p className="text-muted-foreground">Monitor your bets as they happen with live updates and instant notifications.</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-card border-border">
+                <CardContent className="p-6 text-center">
+                  <BarChart3 className="w-12 h-12 text-primary mx-auto mb-4" />
+                  <h3 className="text-xl font-bold mb-2">Advanced Analytics</h3>
+                  <p className="text-muted-foreground">Get detailed insights into your betting performance with comprehensive analytics.</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-card border-border">
+                <CardContent className="p-6 text-center">
+                  <Activity className="w-12 h-12 text-primary mx-auto mb-4" />
+                  <h3 className="text-xl font-bold mb-2">Portfolio Management</h3>
+                  <p className="text-muted-foreground">Manage your bets like a professional trader with our intuitive portfolio tools.</p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
       </main>
     </div>
   )

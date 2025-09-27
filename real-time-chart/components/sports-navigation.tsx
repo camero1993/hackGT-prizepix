@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Bell, Search, User, Menu, X, TrendingUp, Activity, Target, Settings } from "lucide-react"
+import Link from "next/link"
 
 export function SportsNavigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -18,7 +19,7 @@ export function SportsNavigation() {
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="text-xl font-sports text-foreground">BETSTOCK</span>
+              <span className="text-xl font-sports text-foreground">SPORTFOLIO</span>
             </div>
           </div>
 
@@ -40,9 +41,11 @@ export function SportsNavigation() {
 
           {/* Right Side Actions */}
           <div className="flex items-center space-x-4">
-            <Button variant="ghost" size="icon" className="text-foreground hover:text-primary">
-              <Search className="w-5 h-5" />
-            </Button>
+            <Link href="/player">
+              <Button variant="ghost" size="icon" className="text-foreground hover:text-primary">
+                <Search className="w-5 h-5" />
+              </Button>
+            </Link>
             <Button variant="ghost" size="icon" className="text-foreground hover:text-primary relative">
               <Bell className="w-5 h-5" />
               <Badge className="absolute -top-1 -right-1 w-2 h-2 p-0 bg-primary"></Badge>
