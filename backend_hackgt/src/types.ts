@@ -49,6 +49,84 @@ export interface PlayerStats {
 }
 
 // ================================
+// Trade Logging System Models
+// ================================
+
+export interface TradeLog {
+  _id?: string;                    // Auto-generated ObjectId
+  timestamp: Date;                 // When action occurred
+  actionType: 'bet_placed' | 'bet_resolved' | 'simulation_started' | 'simulation_ended' | 'balance_updated';
+  gameId?: string;                 // Related game
+  betId?: string;                  // Related bet
+  simulationId?: string;           // Related simulation
+  details: {
+    description: string;           // Human-readable description
+    amount?: number;               // Amount involved
+    balanceBefore?: number;        // Balance before action
+    balanceAfter?: number;         // Balance after action
+    winnings?: number;             // Winnings (for bet_resolved)
+    metadata?: Record<string, any>; // Additional context
+  };
+}
+
+export interface Simulation {
+  _id: string;                     // Unique simulation ID
+  contractLength: number;          // Number of games in contract
+  initialBalance: number;          // Starting balance
+  finalBalance: number;            // Ending balance
+  totalReturnPct: number;          // Return percentage
+  gamesPlayed: number;             // Games actually played
+  gamesWon: number;                // Games won
+  winRate: number;                 // Win rate percentage
+  status: 'running' | 'completed' | 'cancelled';
+  startedAt: Date;                 // When simulation started
+  completedAt?: Date;              // When simulation ended
+  parlayConfig: Parlay[];          // Parlay configuration used
+}
+
+export interface Bet {
+  _id: string;                     // Unique bet ID
+  gameId: string;                  // Reference to games collection
+  playerId: string;                // Reference to players collection
+  stat: 'points' | 'rebounds' | 'assists';
+  betType: 'flex' | 'power';
+  threshold: number;               // Expected value/line
+  actual?: number;                 // Actual performance (filled after game)
+  hit?: boolean;                   // Whether bet won (filled after game)
+  betAmount: number;               // Amount wagered
+  multiplier: number;              // Multiplier applied
+  potentialWinnings: number;       // betAmount * multiplier
+  actualWinnings?: number;         // Actual winnings (filled after game)
+  status: 'pending' | 'won' | 'lost';
+  createdAt: Date;                 // When bet was placed
+  resolvedAt?: Date;               // When bet was resolved
+  parlayId?: string;               // Reference to parlay if part of one
+  simulationId?: string;           // Reference to simulation
+}
+
+// Database model for parlays
+export interface Parlay {
+  _id: string;                     // Unique parlay ID
+  gameId: string;                  // Game this parlay is for
+  betIds: string[];                // Array of bet IDs in this parlay
+  totalBetAmount: number;          // Total amount wagered
+  multiplier: number;              // Final multiplier
+  potentialWinnings: number;       // Total potential winnings
+  actualWinnings?: number;         // Actual winnings
+  status: 'pending' | 'won' | 'lost';
+  createdAt: Date;
+  resolvedAt?: Date;
+  simulationId?: string;           // Reference to simulation
+}
+
+// API request model for parlays (simplified)
+export interface ParlayRequest {
+  playerId: string;
+  stat: string;
+  betType: 'flex' | 'power';
+}
+
+// ================================
 // API Response Models
 // ================================
 
@@ -204,7 +282,7 @@ export interface Parlay {
 
 export interface SimulationRequest {
   contract_length: number;
-  parlays: Parlay[];
+  parlays: ParlayRequest[];
 }
 
 // ================================
@@ -283,7 +361,7 @@ export const TeamGamesQuerySchema = z.object({
 // ================================
 
 export interface BettingSimulatorInterface {
-  loadAllThresholds(): Promise<void>;
+  loadStarPlayers(): Promise<void>;
   getPlayerInfo(playerId: string): Promise<{
     expected_values: Record<string, number>;
     games_analyzed: number;

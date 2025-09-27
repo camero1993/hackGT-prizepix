@@ -1,4 +1,4 @@
-import { Parlay, BetType } from '../types';
+import { Parlay, ParlayRequest, BetType } from '../types';
 
 export interface MultiplierCalculationResult {
   multiplier: number;
@@ -19,7 +19,7 @@ export class MultiplierCalculator {
    * Flex Play: Partial payouts for partial hits
    */
   static calculateMultiplier(
-    parlays: Parlay[], 
+    parlays: ParlayRequest[], 
     flexHits: number, 
     powerHits: number, 
     allHits: boolean
@@ -191,7 +191,7 @@ export class MultiplierCalculator {
   /**
    * Validate parlay configuration based on PrizePicks rules
    */
-  static validateParlayConfiguration(parlays: Parlay[]): {
+  static validateParlayConfiguration(parlays: ParlayRequest[]): {
     isValid: boolean;
     errors: string[];
     warnings: string[];

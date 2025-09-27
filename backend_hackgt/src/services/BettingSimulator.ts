@@ -1,10 +1,12 @@
 import mongoose, { Document } from 'mongoose';
+
 import {
   Player,
   Team,
   Game,
   PlayerStats,
   Parlay,
+  ParlayRequest,
   ContractResult,
   GameResult,
   ParlayOutcome,
@@ -15,6 +17,32 @@ import {
 } from '../types';
 import { simulatedTimeService } from './SimulatedTimeService';
 import { MultiplierCalculator } from '../utils/MultiplierCalculator';
+import { TradeLoggingService } from './TradeLoggingService';
+import { redisService, DemoState, TradeLogEntry } from './RedisService';
+
+// Constants
+const DEFAULT_INITIAL_BALANCE = 1000.0;
+const BET_PERCENTAGE = 0.1; // 10% of balance per bet
+const DEFAULT_MULTIPLIER = 1.5;
+const PERFORMANCE_VARIANCE = 0.3; // 30% variance in performance simulation
+const SKEW_PROBABILITY = 0.3; // 30% chance of performance boost
+const SKEW_FACTOR = 0.2; // 20% boost when skew occurs
+const MIN_VALID_GAMES = 3;
+
+// Star players for demo (verified players with 24-25 data)
+// These players have sufficient game data and are well-known for betting
+const STAR_PLAYER_IDS = [
+  '1628983', // Shai Gilgeous-Alexander - 103 games
+  '1630169', // Tyrese Haliburton - 99 games
+  '203999', // Nikola Jokić - 88 games
+  '1628369', // Jayson Tatum - 84 games
+  '201939', // Stephen Curry - 83 games
+  '1628378', // Donovan Mitchell - 83 games
+  '2544', // LeBron James - 78 games
+  '1626164', // Devin Booker - 78 games
+  '203507', // Giannis Antetokounmpo - 75 games
+  '203954' // Joel Embiid - 19 games
+];
 
 // MongoDB Schemas
 const PlayerSchema = new mongoose.Schema({
@@ -65,108 +93,78 @@ const PlayerGameStatsSchema = new mongoose.Schema({
 const PlayerModel = mongoose.model<Player & Document>('Player', PlayerSchema);
 const TeamModel = mongoose.model<Team & Document>('Team', TeamSchema);
 const GameModel = mongoose.model<Game & Document>('Game', GameSchema);
-const PlayerGameStatsModel = mongoose.model<PlayerStats & Document>('playerGameStats', PlayerGameStatsSchema);
+const PlayerGameStatsModel = mongoose.model<PlayerStats & Document>('playerGameStats', PlayerGameStatsSchema, 'playerGameStats');
 
 export class BettingSimulator implements BettingSimulatorInterface {
-  private playerThresholds: PlayerThresholds = {};
-  private initialBalance: number = 1000.0;
+  public playerThresholds: PlayerThresholds = {};
+  private initialBalance: number = DEFAULT_INITIAL_BALANCE;
+  private currentSimulationId: string | null = null;
 
-  constructor(initialBalance: number = 1000.0) {
+  constructor(initialBalance: number = DEFAULT_INITIAL_BALANCE) {
     this.initialBalance = initialBalance;
   }
 
   /**
-   * Load all player thresholds based on recent performance
+   * Initialize Redis state
    */
-  async loadAllThresholds(): Promise<void> {
+  async initializeRedisState(): Promise<void> {
+    await redisService.connect();
+    await redisService.initializeDemoState(this.initialBalance);
+  }
+
+
+  /**
+   * Load only star players for demo purposes (much faster startup)
+   */
+  async loadStarPlayers(): Promise<void> {
     try {
-      console.log('🔄 Loading player expected values (betting lines)...');
+      console.log('🔄 Loading star players for demo...');
+      console.log(`Loading ${STAR_PLAYER_IDS.length} star players...`);
       
-      // Get all active players
-      const players = await PlayerModel.find({ active: true }).select('_id');
-      const playerIds = players.map(p => p._id);
-      
-      console.log(`Found ${playerIds.length} active players`);
-      
-      // Calculate expected values for each player
-      for (const playerId of playerIds) {
+      // Calculate expected values for each star player
+      for (const playerId of STAR_PLAYER_IDS) {
         const expectedValues = await this.calculatePlayerExpectedValues(playerId);
         if (expectedValues) {
           this.playerThresholds[playerId] = expectedValues;
         }
       }
       
-      console.log(`✅ Loaded expected values for ${Object.keys(this.playerThresholds).length} players`);
+      console.log(`✅ Loaded expected values for ${Object.keys(this.playerThresholds).length} star players`);
     } catch (error) {
-      console.error('Error loading player thresholds:', error);
+      console.error('Error loading star players:', error);
       throw error;
     }
   }
 
   /**
    * Calculate expected values (betting lines) for a specific player
-   * Only uses stats from games that occurred before the simulated current time
+   * Uses all stats from the entire 24-25 season
    */
   private async calculatePlayerExpectedValues(playerId: string): Promise<{ points: number; rebounds: number; assists: number } | null> {
     try {
-      // Get all player stats for this player
-      const allStats = await PlayerGameStatsModel
-        .find({ playerId })
-        .sort({ gameDateUTC: -1 })
-        .lean();
-
-      // Filter stats based on simulated time - only use stats from past games
-      const knownStats = simulatedTimeService.getKnownGames(allStats.map(stat => ({
-        _id: stat._id,
-        season: stat.season,
-        seasonType: stat.seasonType,
-        gameDateUTC: stat.gameDateUTC,
-        homeTeamId: stat.teamId,
-        awayTeamId: stat.opponentTeamId,
-        homeScore: 0,
-        awayScore: 0,
-        status: 'Final',
-        venue: 'Unknown'
-      })));
-
-      // Convert back to stats format and take last 20
-      const recentStats = knownStats.slice(0, 20).map(game => ({
-        _id: game._id,
-        gameId: game._id,
-        playerId,
-        teamId: game.homeTeamId,
-        opponentTeamId: game.awayTeamId,
-        gameDateUTC: game.gameDateUTC,
-        season: game.season,
-        seasonType: game.seasonType,
-        points: 0, // We'll need to get actual stats
-        rebounds: 0,
-        assists: 0
-      }));
-
-      if (recentStats.length < 5) {
-        return null; // Not enough data
-      }
-
-      // For now, we need to get the actual stats for these filtered games
-      // This is a simplified approach - in a real implementation, you'd want to
-      // filter the stats query directly in the database
+      // Get player stats for entire 24-25 season
       const actualStats = await PlayerGameStatsModel
         .find({ 
           playerId,
-          gameDateUTC: { $lt: simulatedTimeService.getCurrentTime() }
+          season: '2024-25'
         })
         .sort({ gameDateUTC: -1 })
-        .limit(20);
+        .lean(); // Execute query and return plain objects
 
-      if (actualStats.length < 5) {
-        return null; // Not enough data
+      // Filter out games with zero stats (likely placeholder data)
+      const validStats = actualStats.filter(stat => 
+        stat.points > 0 || stat.rebounds > 0 || stat.assists > 0
+      );
+      
+      if (validStats.length < MIN_VALID_GAMES) {
+        console.log(`Player ${playerId}: Only ${validStats.length} valid games found`);
+        return null; // Not enough valid data
       }
 
-      // Calculate expected value (mean) for each stat
-      const points = actualStats.map(s => s.points);
-      const rebounds = actualStats.map(s => s.rebounds);
-      const assists = actualStats.map(s => s.assists);
+      // Calculate expected value (mean) for each stat using valid games only
+      const points = validStats.map(s => s.points);
+      const rebounds = validStats.map(s => s.rebounds);
+      const assists = validStats.map(s => s.assists);
 
       const calculateMean = (arr: number[]): number => {
         return arr.reduce((sum, val) => sum + val, 0) / arr.length;
@@ -191,10 +189,8 @@ export class BettingSimulator implements BettingSimulatorInterface {
     games_analyzed: number;
   } | { error: string }> {
     try {
-      // Ensure expected values are loaded
-      if (Object.keys(this.playerThresholds).length === 0) {
-        await this.loadAllThresholds();
-      }
+      // Ensure star players are loaded
+      await this.ensureStarPlayersLoaded();
 
       const playerExpectedValues = this.playerThresholds[playerId];
       if (!playerExpectedValues) {
@@ -221,14 +217,37 @@ export class BettingSimulator implements BettingSimulatorInterface {
   /**
    * Simulate a betting contract
    */
-  async simulateContract(contractLength: number, parlays: Parlay[]): Promise<ContractResult> {
+  async simulateContract(contractLength: number, parlays: ParlayRequest[]): Promise<ContractResult> {
     try {
       console.log(`Starting simulation: ${contractLength} games, ${parlays.length} parlay legs`);
       
-      // Ensure thresholds are loaded
-      if (Object.keys(this.playerThresholds).length === 0) {
-        await this.loadAllThresholds();
-      }
+      // Create simulation record
+      this.currentSimulationId = this.generateId('sim');
+      await TradeLoggingService.createSimulation(
+        this.currentSimulationId,
+        contractLength,
+        this.initialBalance,
+        parlays
+      );
+
+      // Set active simulation in Redis
+      await redisService.setActiveSimulation(this.currentSimulationId, {
+        contractLength,
+        initialBalance: this.initialBalance,
+        parlayConfig: parlays
+      });
+
+      // Log simulation start in Redis
+      await redisService.addTradeLog({
+        timestamp: new Date().toISOString(),
+        action: 'simulation_started',
+        amount: 0,
+        balanceAfter: this.initialBalance,
+        description: `Started simulation with ${contractLength} games`
+      });
+      
+      // Ensure star players are loaded
+      await this.ensureStarPlayersLoaded();
 
       // Get recent games for simulation
       const games = await this.getRecentGames(contractLength);
@@ -256,6 +275,35 @@ export class BettingSimulator implements BettingSimulatorInterface {
       const totalReturnPct = ((balance - this.initialBalance) / this.initialBalance) * 100;
       const winRate = (gamesWon / contractLength) * 100;
 
+      // Complete simulation record
+      await TradeLoggingService.completeSimulation(
+        this.currentSimulationId,
+        balance,
+        contractLength,
+        gamesWon
+      );
+
+      // Update final state in Redis
+      await redisService.updateDemoState({
+        balance,
+        totalBetsPlaced: contractLength,
+        totalWinnings: balance - this.initialBalance,
+        totalWagered: this.initialBalance * BET_PERCENTAGE * contractLength // Approximate
+      });
+
+      // Log simulation end in Redis
+      await redisService.addTradeLog({
+        timestamp: new Date().toISOString(),
+        action: 'simulation_ended',
+        amount: balance - this.initialBalance,
+        balanceAfter: balance,
+        description: `Completed simulation: ${gamesWon}/${contractLength} games won`
+      });
+
+      // Clear active simulation
+      await redisService.clearActiveSimulation();
+      this.currentSimulationId = null;
+
       return {
         contract_length: contractLength,
         parlay_size: parlays.length,
@@ -269,6 +317,16 @@ export class BettingSimulator implements BettingSimulatorInterface {
       };
     } catch (error) {
       console.error('Simulation failed:', error);
+      // Mark simulation as cancelled if it was started
+      if (this.currentSimulationId) {
+        await TradeLoggingService.logAction('simulation_ended', {
+          description: 'Simulation cancelled due to error',
+          amount: 0,
+          balanceBefore: this.initialBalance,
+          balanceAfter: this.initialBalance
+        }, undefined, undefined, this.currentSimulationId);
+        this.currentSimulationId = null;
+      }
       throw error;
     }
   }
@@ -292,11 +350,26 @@ export class BettingSimulator implements BettingSimulatorInterface {
   /**
    * Simulate a single game
    */
-  private async simulateGame(game: Game, parlays: Parlay[], balanceBefore: number): Promise<GameResult> {
+  private async simulateGame(game: Game, parlays: ParlayRequest[], balanceBefore: number): Promise<GameResult> {
     const outcomes: ParlayOutcome[] = [];
     let allHits = true;
     let flexHits = 0;
     let powerHits = 0;
+
+    // Create parlay record if we have multiple bets
+    let parlayId: string | undefined;
+    if (parlays.length > 1) {
+      parlayId = this.generateId('parlay', game._id);
+      const betAmount = balanceBefore * BET_PERCENTAGE;
+      await TradeLoggingService.createParlay(
+        parlayId,
+        game._id,
+        [], // Will be populated with bet IDs
+        betAmount,
+        0, // Will be calculated
+        this.currentSimulationId || undefined
+      );
+    }
 
     // Simulate each parlay leg (all bets are "over" bets)
     for (const parlay of parlays) {
@@ -308,6 +381,50 @@ export class BettingSimulator implements BettingSimulatorInterface {
       // Get actual performance (simulated for now - in real implementation, use actual game data)
       const actual = this.simulatePlayerPerformance(parlay.playerId, parlay.stat as StatType);
       const hit = actual > expectedValue; // "Over" bet: actual must exceed expected value
+
+      // Create bet record
+      const betId = this.generateId('bet', `${parlay.playerId}_${parlay.stat}`);
+      const betAmount = balanceBefore * BET_PERCENTAGE;
+      const multiplier = DEFAULT_MULTIPLIER;
+      
+      await TradeLoggingService.createBet(
+        betId,
+        game._id,
+        parlay.playerId,
+        parlay.stat as 'points' | 'rebounds' | 'assists',
+        parlay.betType,
+        expectedValue,
+        betAmount,
+        multiplier,
+        this.currentSimulationId || undefined,
+        parlayId
+      );
+
+      // Add to Redis active bets
+      await redisService.addActiveBet(betId, {
+        gameId: game._id,
+        playerId: parlay.playerId,
+        stat: parlay.stat,
+        betType: parlay.betType,
+        betAmount: betAmount.toString(),
+        threshold: expectedValue.toString(),
+        status: 'pending'
+      });
+
+      // Resolve bet
+      const actualWinnings = hit ? betAmount * multiplier : 0;
+      await TradeLoggingService.resolveBet(betId, actual, hit, actualWinnings);
+
+      // Remove from active bets and log in Redis
+      await redisService.removeActiveBet(betId);
+      await redisService.addTradeLog({
+        timestamp: new Date().toISOString(),
+        action: 'bet_resolved',
+        amount: betAmount,
+        winnings: actualWinnings,
+        balanceAfter: balanceBefore, // Will be updated after all bets
+        description: `Bet ${hit ? 'won' : 'lost'}: ${actual} vs ${expectedValue}`
+      });
 
       outcomes.push({
         playerId: parlay.playerId,
@@ -332,9 +449,23 @@ export class BettingSimulator implements BettingSimulatorInterface {
     // Calculate multiplier based on bet types
     const multiplierResult = MultiplierCalculator.calculateMultiplier(parlays, flexHits, powerHits, allHits);
     const multiplier = multiplierResult.multiplier;
-    const betAmount = balanceBefore * 0.1; // Bet 10% of balance
+    const betAmount = balanceBefore * BET_PERCENTAGE;
     const winnings = multiplier > 0 ? betAmount * multiplier : 0;
     const balanceAfter = balanceBefore - betAmount + winnings;
+
+    // Update balance in Redis
+    await redisService.updateBalance(balanceAfter);
+    await redisService.addBalanceHistory(balanceAfter);
+
+    // Log balance update
+    await this.logTradeAction(
+      'balance_updated',
+      winnings - betAmount,
+      balanceAfter,
+      `Game ${game._id}: ${allHits ? 'Won' : 'Lost'} parlay`,
+      game._id,
+      this.currentSimulationId || undefined
+    );
 
     return {
       game_id: game._id,
@@ -351,7 +482,12 @@ export class BettingSimulator implements BettingSimulatorInterface {
 
   /**
    * Simulate player performance for a given stat
-   * In a real implementation, this would use actual game data
+   * Uses realistic variance around expected values with slight positive skew
+   * to make "over" bets more interesting for demo purposes
+   * 
+   * @param playerId - The player ID to simulate performance for
+   * @param stat - The stat type to simulate (points, rebounds, assists)
+   * @returns Simulated performance value
    */
   private simulatePlayerPerformance(playerId: string, stat: StatType): number {
     const expectedValues = this.playerThresholds[playerId];
@@ -364,11 +500,11 @@ export class BettingSimulator implements BettingSimulatorInterface {
     // Simulate performance with realistic variance around the expected value
     // Using a normal distribution approximation with some skew
     const basePerformance = expectedValue;
-    const variance = expectedValue * 0.3; // 30% variance
+    const variance = expectedValue * PERFORMANCE_VARIANCE;
     const randomFactor = (Math.random() - 0.5) * 2; // -1 to 1
     
     // Add slight positive skew to make "over" bets more interesting
-    const skewFactor = Math.random() < 0.3 ? 0.2 : 0; // 30% chance of slight boost
+    const skewFactor = Math.random() < SKEW_PROBABILITY ? SKEW_FACTOR : 0;
     
     return Math.max(0, Math.round(basePerformance + (variance * randomFactor) + (expectedValue * skewFactor)));
   }
@@ -412,5 +548,147 @@ export class BettingSimulator implements BettingSimulatorInterface {
       .lean();
 
     return simulatedTimeService.filterGamesByTime(allGames);
+  }
+
+  // ================================
+  // Helper Methods
+  // ================================
+
+  /**
+   * Log trade action to both TradeLoggingService and Redis
+   */
+  private async logTradeAction(
+    action: 'bet_placed' | 'bet_resolved' | 'simulation_started' | 'simulation_ended' | 'balance_updated',
+    amount: number,
+    balanceAfter: number,
+    description: string,
+    gameId?: string,
+    simulationId?: string
+  ): Promise<void> {
+    // Log to TradeLoggingService
+    await TradeLoggingService.logAction(action, {
+      description,
+      amount,
+      balanceBefore: balanceAfter - amount,
+      balanceAfter
+    }, gameId, undefined, simulationId);
+
+    // Log to Redis
+    await redisService.addTradeLog({
+      timestamp: new Date().toISOString(),
+      action,
+      amount,
+      balanceAfter,
+      description
+    });
+  }
+
+  /**
+   * Ensure star players are loaded
+   */
+  private async ensureStarPlayersLoaded(): Promise<void> {
+    if (Object.keys(this.playerThresholds).length === 0) {
+      console.log('⚠️ No player thresholds loaded. Loading star players...');
+      await this.loadStarPlayers();
+    }
+  }
+
+  /**
+   * Create a unique ID with timestamp
+   */
+  private generateId(prefix: string, suffix?: string): string {
+    return `${prefix}_${Date.now()}${suffix ? `_${suffix}` : ''}`;
+  }
+
+  // ================================
+  // Trade Logging Methods
+  // ================================
+
+  /**
+   * Get recent trade logs
+   */
+  async getRecentTradeLogs(limit: number = 50) {
+    return await TradeLoggingService.getRecentTradeLogs(limit);
+  }
+
+  /**
+   * Get simulation history
+   */
+  async getSimulationHistory(limit: number = 20) {
+    return await TradeLoggingService.getSimulationHistory(limit);
+  }
+
+  /**
+   * Get bet history for a specific game
+   */
+  async getGameBets(gameId: string) {
+    return await TradeLoggingService.getGameBets(gameId);
+  }
+
+  /**
+   * Get analytics data
+   */
+  async getAnalytics() {
+    return await TradeLoggingService.getAnalytics();
+  }
+
+  /**
+   * Get current simulation ID
+   */
+  getCurrentSimulationId(): string | null {
+    return this.currentSimulationId;
+  }
+
+  // ================================
+  // Redis Real-time Methods
+  // ================================
+
+  /**
+   * Get current demo state from Redis
+   */
+  async getCurrentDemoState(): Promise<DemoState | null> {
+    return await redisService.getDemoState();
+  }
+
+  /**
+   * Get recent trade logs from Redis
+   */
+  async getRecentRedisLogs(limit: number = 50): Promise<TradeLogEntry[]> {
+    return await redisService.getRecentTradeLogs(limit);
+  }
+
+  /**
+   * Get active bets from Redis
+   */
+  async getActiveBets(): Promise<string[]> {
+    return await redisService.getActiveBets();
+  }
+
+  /**
+   * Get balance history from Redis
+   */
+  async getBalanceHistory(limit: number = 100): Promise<Array<{ timestamp: number; balance: number }>> {
+    return await redisService.getBalanceHistory(limit);
+  }
+
+  /**
+   * Get active simulation from Redis
+   */
+  async getActiveSimulation(): Promise<any> {
+    return await redisService.getActiveSimulation();
+  }
+
+  /**
+   * Clear all demo data from Redis
+   */
+  async clearRedisData(): Promise<void> {
+    await redisService.clearAllDemoData();
+  }
+
+  /**
+   * Get Redis connection status
+   */
+  isRedisConnected(): boolean {
+    return redisService.isRedisConnected();
   }
 }
