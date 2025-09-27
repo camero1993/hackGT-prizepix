@@ -21,7 +21,7 @@ const mockBetHoldings = [
     currentValue: 125,
     change: 25,
     changePercent: 25,
-    status: "live",
+    status: "live" as const,
     timeRemaining: "2Q 8:45",
   },
   {
@@ -34,7 +34,7 @@ const mockBetHoldings = [
     currentValue: 180,
     change: -20,
     changePercent: -10,
-    status: "live",
+    status: "live" as const,
     timeRemaining: "3Q 12:30",
   },
   {
@@ -47,7 +47,7 @@ const mockBetHoldings = [
     currentValue: 165,
     change: 15,
     changePercent: 10,
-    status: "pending",
+    status: "pending" as const,
     timeRemaining: "Starts in 2h",
   },
 ]
@@ -109,10 +109,10 @@ export default function SportsTrading() {
       <main className="container mx-auto px-4 py-6">
         {/* Hero Section with Parallax */}
         <div className="mb-8">
-          <div className="relative h-[400px] rounded-lg overflow-hidden mb-6">
+          <div className="relative h-[400px] rounded-lg overflow-hidden mb-6 animate-float">
             <div 
               ref={parallaxRef}
-              className="parallax-element absolute inset-0 bg-cover bg-center"
+              className="parallax-element parallax-enhanced absolute inset-0 bg-cover bg-center"
               style={{
                 backgroundImage: "url('/american-football-player-mixed-media-600nw-1926986162.jpg copy.png')",
                 height: '130%',
@@ -121,16 +121,24 @@ export default function SportsTrading() {
                 left: '0'
               }}
             />
-            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-between px-8">
-              <div className="text-white">
-                <h1 className="text-5xl font-sports mb-3">SPORTS PORTFOLIO</h1>
-                <p className="text-xl text-gray-200">
+            {/* Enhanced overlay with depth */}
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-transparent flex items-center justify-between px-8">
+              {/* Left side content with enhanced depth */}
+              <div className="text-white relative z-10">
+                <h1 className="text-5xl font-sports mb-3 text-glow drop-shadow-2xl animate-slide-up hover:scale-105 transition-transform duration-300">
+                  SPORTS PORTFOLIO
+                </h1>
+                <p className="text-xl text-gray-200 text-shadow-md drop-shadow-lg animate-slide-up hover:text-white transition-colors duration-300" style={{animationDelay: '0.1s'}}>
                   Trade your bets like stocks. Track performance in real-time.
                 </p>
               </div>
-              <div className="text-right">
-                <div className="text-4xl font-bold text-white">${totalValue.toLocaleString()}</div>
-                <div className={`flex items-center justify-end text-lg ${totalChange >= 0 ? "text-green-400" : "text-red-400"}`}>
+              
+              {/* Right side content with enhanced depth */}
+              <div className="text-right relative z-10 backdrop-blur-sm bg-black/20 rounded-lg p-6 border border-white/10 animate-slide-up hover:bg-black/30 hover:border-white/20 transition-all duration-300 hover:scale-105" style={{animationDelay: '0.2s'}}>
+                <div className="text-4xl font-bold text-white text-glow drop-shadow-2xl hover:scale-110 transition-transform duration-300">
+                  ${totalValue.toLocaleString()}
+                </div>
+                <div className={`flex items-center justify-end text-lg font-semibold ${totalChange >= 0 ? "text-green-400" : "text-red-400"} text-shadow-md drop-shadow-lg hover:scale-105 transition-transform duration-300`}>
                   {totalChange >= 0 ? <TrendingUp className="w-5 h-5 mr-2" /> : <TrendingDown className="w-5 h-5 mr-2" />}
                   ${Math.abs(totalChange).toFixed(0)} ({totalChangePercent.toFixed(1)}%)
                 </div>
