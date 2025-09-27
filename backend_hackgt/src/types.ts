@@ -88,6 +88,7 @@ export interface ParlayOutcome {
   threshold: number;
   actual: number;
   hit: boolean;
+  betType: 'flex' | 'power';
 }
 
 export interface GameResult {
@@ -153,6 +154,7 @@ export interface ApiResponse<T = any> {
 export interface Parlay {
   playerId: string;
   stat: string;
+  betType: 'flex' | 'power';
 }
 
 export interface SimulationRequest {
@@ -168,6 +170,9 @@ export const ParlaySchema = z.object({
   playerId: z.string().min(1, 'Player ID is required'),
   stat: z.enum(['points', 'rebounds', 'assists'], {
     errorMap: () => ({ message: 'Stat must be one of: points, rebounds, assists' })
+  }),
+  betType: z.enum(['flex', 'power'], {
+    errorMap: () => ({ message: 'Bet type must be either flex or power' })
   })
 });
 
@@ -214,6 +219,7 @@ export interface BettingSimulatorInterface {
 // ================================
 
 export type StatType = 'points' | 'rebounds' | 'assists';
+export type BetType = 'flex' | 'power';
 
 export interface PlayerThresholds {
   [playerId: string]: {
@@ -227,4 +233,27 @@ export interface GameSimulationData {
   gameId: string;
   date: string;
   playerStats: PlayerStats[];
+}
+
+// ================================
+// Time Management Types
+// ================================
+
+export interface TimeState {
+  currentTime: string; // ISO string
+  isSimulationMode: boolean;
+}
+
+export interface TimeAdvanceRequest {
+  duration: number; // milliseconds
+  unit?: 'milliseconds' | 'seconds' | 'minutes' | 'hours' | 'days';
+}
+
+export interface TimeSetRequest {
+  time: string; // ISO string
+}
+
+export interface GameTimeFilter {
+  pastGames: Game[];
+  futureGames: Game[];
 }

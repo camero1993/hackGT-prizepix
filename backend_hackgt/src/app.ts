@@ -15,8 +15,12 @@ import {
   ApiResponse,
   SimulationRequestSchema,
   PlayerQuerySchema,
-  GameQuerySchema
+  GameQuerySchema,
+  TimeState,
+  TimeAdvanceRequest,
+  TimeSetRequest
 } from './types';
+import { simulatedTimeService } from './services/SimulatedTimeService';
 import mongoose from 'mongoose';
 
 // Initialize Express app
@@ -103,7 +107,15 @@ app.get('/', (req: Request, res: Response) => {
         games: '/games',
         simulate: '/simulate',
         player_thresholds: '/player/:playerId/thresholds',
-        health: '/health'
+        health: '/health',
+        time_management: {
+          get_time: '/time',
+          set_time: '/time/set',
+          advance_time: '/time/advance',
+          reset_time: '/time/reset',
+          time_filtered_games: '/games/time-filtered',
+          future_games: '/games/future'
+        }
       }
     }
   };
@@ -389,12 +401,16 @@ app.get('/simulate/example', handleAsync(async (req: Request, res: Response) => 
       example_request: {
         contract_length: 3,
         parlays: [
-          { playerId: samplePlayers[0]._id, stat: 'points' },
-          { playerId: samplePlayers[1]._id, stat: 'rebounds' }
+          { playerId: samplePlayers[0]._id, stat: 'points', betType: 'flex' },
+          { playerId: samplePlayers[1]._id, stat: 'rebounds', betType: 'power' }
         ]
       },
       description: 'POST this JSON to /simulate to run a sample simulation',
-      available_stats: ['points', 'rebounds', 'assists']
+      available_stats: ['points', 'rebounds', 'assists'],
+      bet_types: {
+        flex: 'Partial payouts for partial hits (2/3 = 1.5x, 3/3 = 3x)',
+        power: 'All-or-nothing with exponential payouts (2^legs)'
+      }
     };
     
     res.json(response);
@@ -404,12 +420,171 @@ app.get('/simulate/example', handleAsync(async (req: Request, res: Response) => 
       example_request: {
         contract_length: 3,
         parlays: [
-          { playerId: 'sample_player_id', stat: 'points' },
-          { playerId: 'another_player_id', stat: 'rebounds' }
+          { playerId: 'sample_player_id', stat: 'points', betType: 'flex' },
+          { playerId: 'another_player_id', stat: 'rebounds', betType: 'power' }
         ]
       },
-      note: 'Replace player IDs with actual values from /players endpoint'
+      note: 'Replace player IDs with actual values from /players endpoint',
+      bet_types: {
+        flex: 'Partial payouts for partial hits (2/3 = 1.5x, 3/3 = 3x)',
+        power: 'All-or-nothing with exponential payouts (2^legs)'
+      }
     });
+  }
+}));
+
+// ================================
+// Time Management Endpoints
+// ================================
+
+// Get current time state
+app.get('/time', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const timeState = simulatedTimeService.getTimeState();
+    const response: TimeState = {
+      currentTime: timeState.currentTime.toISOString(),
+      isSimulationMode: timeState.isSimulationMode
+    };
+    res.json(response);
+  } catch (error) {
+    console.error('Error getting time state:', error);
+    res.status(500).json({ error: 'Failed to get time state' });
+  }
+}));
+
+// Set simulated time
+app.post('/time/set', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { time } = req.body as TimeSetRequest;
+    
+    if (!time) {
+      res.status(400).json({ error: 'Time is required' });
+      return;
+    }
+    
+    const newTime = new Date(time);
+    if (isNaN(newTime.getTime())) {
+      res.status(400).json({ error: 'Invalid time format. Use ISO string format.' });
+      return;
+    }
+    
+    simulatedTimeService.setCurrentTime(newTime);
+    
+    const response: TimeState = {
+      currentTime: simulatedTimeService.getFormattedTime(),
+      isSimulationMode: simulatedTimeService.isInSimulationMode()
+    };
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Error setting time:', error);
+    res.status(500).json({ error: 'Failed to set time' });
+  }
+}));
+
+// Advance simulated time
+app.post('/time/advance', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { duration, unit = 'milliseconds' } = req.body as TimeAdvanceRequest;
+    
+    if (!duration || duration <= 0) {
+      res.status(400).json({ error: 'Duration must be a positive number' });
+      return;
+    }
+    
+    let durationMs = duration;
+    
+    // Convert to milliseconds based on unit
+    switch (unit) {
+      case 'seconds':
+        durationMs = duration * 1000;
+        break;
+      case 'minutes':
+        durationMs = duration * 60 * 1000;
+        break;
+      case 'hours':
+        durationMs = duration * 60 * 60 * 1000;
+        break;
+      case 'days':
+        durationMs = duration * 24 * 60 * 60 * 1000;
+        break;
+      case 'milliseconds':
+      default:
+        durationMs = duration;
+        break;
+    }
+    
+    simulatedTimeService.advanceTime(durationMs);
+    
+    const response: TimeState = {
+      currentTime: simulatedTimeService.getFormattedTime(),
+      isSimulationMode: simulatedTimeService.isInSimulationMode()
+    };
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Error advancing time:', error);
+    res.status(500).json({ error: 'Failed to advance time' });
+  }
+}));
+
+// Reset to real time
+app.post('/time/reset', handleAsync(async (req: Request, res: Response) => {
+  try {
+    simulatedTimeService.resetToRealTime();
+    
+    const response: TimeState = {
+      currentTime: simulatedTimeService.getFormattedTime(),
+      isSimulationMode: simulatedTimeService.isInSimulationMode()
+    };
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Error resetting time:', error);
+    res.status(500).json({ error: 'Failed to reset time' });
+  }
+}));
+
+// Get games filtered by time
+app.get('/games/time-filtered', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { pastGames, futureGames } = await bettingSimulator.getGamesByTime();
+    
+    const response = {
+      currentTime: simulatedTimeService.getFormattedTime(),
+      isSimulationMode: simulatedTimeService.isInSimulationMode(),
+      pastGames: pastGames.map(convertGameToResponse),
+      futureGames: futureGames.map(convertGameToResponse),
+      counts: {
+        pastGames: pastGames.length,
+        futureGames: futureGames.length
+      }
+    };
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Error getting time-filtered games:', error);
+    res.status(500).json({ error: 'Failed to get time-filtered games' });
+  }
+}));
+
+// Get future games (unknown to system)
+app.get('/games/future', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 20;
+    const futureGames = await bettingSimulator.getFutureGames(limit);
+    
+    const response = {
+      currentTime: simulatedTimeService.getFormattedTime(),
+      isSimulationMode: simulatedTimeService.isInSimulationMode(),
+      futureGames: futureGames.map(convertGameToResponse),
+      count: futureGames.length
+    };
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Error getting future games:', error);
+    res.status(500).json({ error: 'Failed to get future games' });
   }
 }));
 

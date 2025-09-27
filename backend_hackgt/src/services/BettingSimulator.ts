@@ -13,6 +13,8 @@ import {
   BettingSimulatorInterface,
   GameSimulationData
 } from '../types';
+import { simulatedTimeService } from './SimulatedTimeService';
+import { MultiplierCalculator } from '../utils/MultiplierCalculator';
 
 // MongoDB Schemas
 const PlayerSchema = new mongoose.Schema({
@@ -103,23 +105,68 @@ export class BettingSimulator implements BettingSimulatorInterface {
 
   /**
    * Calculate expected values (betting lines) for a specific player
+   * Only uses stats from games that occurred before the simulated current time
    */
   private async calculatePlayerExpectedValues(playerId: string): Promise<{ points: number; rebounds: number; assists: number } | null> {
     try {
-      // Get recent player stats (last 20 games)
-      const recentStats = await PlayerGameStatsModel
+      // Get all player stats for this player
+      const allStats = await PlayerGameStatsModel
         .find({ playerId })
         .sort({ gameDateUTC: -1 })
-        .limit(20);
+        .lean();
+
+      // Filter stats based on simulated time - only use stats from past games
+      const knownStats = simulatedTimeService.getKnownGames(allStats.map(stat => ({
+        _id: stat._id,
+        season: stat.season,
+        seasonType: stat.seasonType,
+        gameDateUTC: stat.gameDateUTC,
+        homeTeamId: stat.teamId,
+        awayTeamId: stat.opponentTeamId,
+        homeScore: 0,
+        awayScore: 0,
+        status: 'Final',
+        venue: 'Unknown'
+      })));
+
+      // Convert back to stats format and take last 20
+      const recentStats = knownStats.slice(0, 20).map(game => ({
+        _id: game._id,
+        gameId: game._id,
+        playerId,
+        teamId: game.homeTeamId,
+        opponentTeamId: game.awayTeamId,
+        gameDateUTC: game.gameDateUTC,
+        season: game.season,
+        seasonType: game.seasonType,
+        points: 0, // We'll need to get actual stats
+        rebounds: 0,
+        assists: 0
+      }));
 
       if (recentStats.length < 5) {
         return null; // Not enough data
       }
 
+      // For now, we need to get the actual stats for these filtered games
+      // This is a simplified approach - in a real implementation, you'd want to
+      // filter the stats query directly in the database
+      const actualStats = await PlayerGameStatsModel
+        .find({ 
+          playerId,
+          gameDateUTC: { $lt: simulatedTimeService.getCurrentTime() }
+        })
+        .sort({ gameDateUTC: -1 })
+        .limit(20);
+
+      if (actualStats.length < 5) {
+        return null; // Not enough data
+      }
+
       // Calculate expected value (mean) for each stat
-      const points = recentStats.map(s => s.points);
-      const rebounds = recentStats.map(s => s.rebounds);
-      const assists = recentStats.map(s => s.assists);
+      const points = actualStats.map(s => s.points);
+      const rebounds = actualStats.map(s => s.rebounds);
+      const assists = actualStats.map(s => s.assists);
 
       const calculateMean = (arr: number[]): number => {
         return arr.reduce((sum, val) => sum + val, 0) / arr.length;
@@ -228,13 +275,18 @@ export class BettingSimulator implements BettingSimulatorInterface {
 
   /**
    * Get recent games for simulation
+   * Only returns games that are "known" to the system (past games)
    */
   private async getRecentGames(limit: number): Promise<Game[]> {
-    return await GameModel
+    const allGames = await GameModel
       .find({ status: 'Final' })
       .sort({ gameDateUTC: -1 })
-      .limit(limit)
       .lean();
+
+    // Filter games based on simulated time - only use past games for modeling
+    const knownGames = simulatedTimeService.getKnownGames(allGames);
+    
+    return knownGames.slice(0, limit);
   }
 
   /**
@@ -243,6 +295,8 @@ export class BettingSimulator implements BettingSimulatorInterface {
   private async simulateGame(game: Game, parlays: Parlay[], balanceBefore: number): Promise<GameResult> {
     const outcomes: ParlayOutcome[] = [];
     let allHits = true;
+    let flexHits = 0;
+    let powerHits = 0;
 
     // Simulate each parlay leg (all bets are "over" bets)
     for (const parlay of parlays) {
@@ -260,18 +314,26 @@ export class BettingSimulator implements BettingSimulatorInterface {
         stat: parlay.stat,
         threshold: expectedValue, // Keep threshold field for API compatibility
         actual,
-        hit
+        hit,
+        betType: parlay.betType
       });
 
-      if (!hit) {
+      if (hit) {
+        if (parlay.betType === 'flex') {
+          flexHits++;
+        } else {
+          powerHits++;
+        }
+      } else {
         allHits = false;
       }
     }
 
-    // Calculate multiplier and balance
-    const multiplier = allHits ? Math.pow(2, parlays.length) : 0;
+    // Calculate multiplier based on bet types
+    const multiplierResult = MultiplierCalculator.calculateMultiplier(parlays, flexHits, powerHits, allHits);
+    const multiplier = multiplierResult.multiplier;
     const betAmount = balanceBefore * 0.1; // Bet 10% of balance
-    const winnings = allHits ? betAmount * multiplier : 0;
+    const winnings = multiplier > 0 ? betAmount * multiplier : 0;
     const balanceAfter = balanceBefore - betAmount + winnings;
 
     return {
@@ -285,6 +347,7 @@ export class BettingSimulator implements BettingSimulatorInterface {
       balance_after: balanceAfter
     };
   }
+
 
   /**
    * Simulate player performance for a given stat
@@ -322,5 +385,32 @@ export class BettingSimulator implements BettingSimulatorInterface {
    */
   areThresholdsLoaded(): boolean {
     return Object.keys(this.playerThresholds).length > 0;
+  }
+
+  /**
+   * Get future games (unknown to the system)
+   */
+  async getFutureGames(limit: number = 20): Promise<Game[]> {
+    const allGames = await GameModel
+      .find({ status: { $in: ['Scheduled', 'In Progress'] } })
+      .sort({ gameDateUTC: 1 })
+      .lean();
+
+    // Filter games based on simulated time - only return future games
+    const futureGames = simulatedTimeService.getUnknownGames(allGames);
+    
+    return futureGames.slice(0, limit);
+  }
+
+  /**
+   * Get games filtered by time (past vs future)
+   */
+  async getGamesByTime(): Promise<{ pastGames: Game[]; futureGames: Game[] }> {
+    const allGames = await GameModel
+      .find({})
+      .sort({ gameDateUTC: -1 })
+      .lean();
+
+    return simulatedTimeService.filterGamesByTime(allGames);
   }
 }
