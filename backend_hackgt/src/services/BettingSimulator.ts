@@ -5,6 +5,7 @@ import {
   Game,
   PlayerStats,
   Parlay,
+  ParlayRequest,
   ContractResult,
   GameResult,
   ParlayOutcome,
@@ -15,6 +16,8 @@ import {
 } from '../types';
 import { simulatedTimeService } from './SimulatedTimeService';
 import { MultiplierCalculator } from '../utils/MultiplierCalculator';
+import { TradeLoggingService } from './TradeLoggingService';
+import { redisService, DemoState, TradeLogEntry } from './RedisService';
 
 // MongoDB Schemas
 const PlayerSchema = new mongoose.Schema({
@@ -68,11 +71,20 @@ const GameModel = mongoose.model<Game & Document>('Game', GameSchema);
 const PlayerGameStatsModel = mongoose.model<PlayerStats & Document>('playerGameStats', PlayerGameStatsSchema);
 
 export class BettingSimulator implements BettingSimulatorInterface {
-  private playerThresholds: PlayerThresholds = {};
+  public playerThresholds: PlayerThresholds = {};
   private initialBalance: number = 1000.0;
+  private currentSimulationId: string | null = null;
 
   constructor(initialBalance: number = 1000.0) {
     this.initialBalance = initialBalance;
+  }
+
+  /**
+   * Initialize Redis state
+   */
+  async initializeRedisState(): Promise<void> {
+    await redisService.connect();
+    await redisService.initializeDemoState(this.initialBalance);
   }
 
   /**
@@ -221,9 +233,34 @@ export class BettingSimulator implements BettingSimulatorInterface {
   /**
    * Simulate a betting contract
    */
-  async simulateContract(contractLength: number, parlays: Parlay[]): Promise<ContractResult> {
+  async simulateContract(contractLength: number, parlays: ParlayRequest[]): Promise<ContractResult> {
     try {
       console.log(`Starting simulation: ${contractLength} games, ${parlays.length} parlay legs`);
+      
+      // Create simulation record
+      this.currentSimulationId = `sim_${Date.now()}`;
+      await TradeLoggingService.createSimulation(
+        this.currentSimulationId,
+        contractLength,
+        this.initialBalance,
+        parlays
+      );
+
+      // Set active simulation in Redis
+      await redisService.setActiveSimulation(this.currentSimulationId, {
+        contractLength,
+        initialBalance: this.initialBalance,
+        parlayConfig: parlays
+      });
+
+      // Log simulation start in Redis
+      await redisService.addTradeLog({
+        timestamp: new Date().toISOString(),
+        action: 'simulation_started',
+        amount: 0,
+        balanceAfter: this.initialBalance,
+        description: `Started simulation with ${contractLength} games`
+      });
       
       // Ensure thresholds are loaded
       if (Object.keys(this.playerThresholds).length === 0) {
@@ -256,6 +293,35 @@ export class BettingSimulator implements BettingSimulatorInterface {
       const totalReturnPct = ((balance - this.initialBalance) / this.initialBalance) * 100;
       const winRate = (gamesWon / contractLength) * 100;
 
+      // Complete simulation record
+      await TradeLoggingService.completeSimulation(
+        this.currentSimulationId,
+        balance,
+        contractLength,
+        gamesWon
+      );
+
+      // Update final state in Redis
+      await redisService.updateDemoState({
+        balance,
+        totalBetsPlaced: contractLength,
+        totalWinnings: balance - this.initialBalance,
+        totalWagered: this.initialBalance * 0.1 * contractLength // Approximate
+      });
+
+      // Log simulation end in Redis
+      await redisService.addTradeLog({
+        timestamp: new Date().toISOString(),
+        action: 'simulation_ended',
+        amount: balance - this.initialBalance,
+        balanceAfter: balance,
+        description: `Completed simulation: ${gamesWon}/${contractLength} games won`
+      });
+
+      // Clear active simulation
+      await redisService.clearActiveSimulation();
+      this.currentSimulationId = null;
+
       return {
         contract_length: contractLength,
         parlay_size: parlays.length,
@@ -269,6 +335,16 @@ export class BettingSimulator implements BettingSimulatorInterface {
       };
     } catch (error) {
       console.error('Simulation failed:', error);
+      // Mark simulation as cancelled if it was started
+      if (this.currentSimulationId) {
+        await TradeLoggingService.logAction('simulation_ended', {
+          description: 'Simulation cancelled due to error',
+          amount: 0,
+          balanceBefore: this.initialBalance,
+          balanceAfter: this.initialBalance
+        }, undefined, undefined, this.currentSimulationId);
+        this.currentSimulationId = null;
+      }
       throw error;
     }
   }
@@ -292,11 +368,26 @@ export class BettingSimulator implements BettingSimulatorInterface {
   /**
    * Simulate a single game
    */
-  private async simulateGame(game: Game, parlays: Parlay[], balanceBefore: number): Promise<GameResult> {
+  private async simulateGame(game: Game, parlays: ParlayRequest[], balanceBefore: number): Promise<GameResult> {
     const outcomes: ParlayOutcome[] = [];
     let allHits = true;
     let flexHits = 0;
     let powerHits = 0;
+
+    // Create parlay record if we have multiple bets
+    let parlayId: string | undefined;
+    if (parlays.length > 1) {
+      parlayId = `parlay_${Date.now()}_${game._id}`;
+      const betAmount = balanceBefore * 0.1; // 10% of balance
+      await TradeLoggingService.createParlay(
+        parlayId,
+        game._id,
+        [], // Will be populated with bet IDs
+        betAmount,
+        0, // Will be calculated
+        this.currentSimulationId || undefined
+      );
+    }
 
     // Simulate each parlay leg (all bets are "over" bets)
     for (const parlay of parlays) {
@@ -308,6 +399,50 @@ export class BettingSimulator implements BettingSimulatorInterface {
       // Get actual performance (simulated for now - in real implementation, use actual game data)
       const actual = this.simulatePlayerPerformance(parlay.playerId, parlay.stat as StatType);
       const hit = actual > expectedValue; // "Over" bet: actual must exceed expected value
+
+      // Create bet record
+      const betId = `bet_${Date.now()}_${parlay.playerId}_${parlay.stat}`;
+      const betAmount = balanceBefore * 0.1; // 10% of balance per bet
+      const multiplier = 1.5; // Simplified multiplier for demo
+      
+      await TradeLoggingService.createBet(
+        betId,
+        game._id,
+        parlay.playerId,
+        parlay.stat as 'points' | 'rebounds' | 'assists',
+        parlay.betType,
+        expectedValue,
+        betAmount,
+        multiplier,
+        this.currentSimulationId || undefined,
+        parlayId
+      );
+
+      // Add to Redis active bets
+      await redisService.addActiveBet(betId, {
+        gameId: game._id,
+        playerId: parlay.playerId,
+        stat: parlay.stat,
+        betType: parlay.betType,
+        betAmount: betAmount.toString(),
+        threshold: expectedValue.toString(),
+        status: 'pending'
+      });
+
+      // Resolve bet
+      const actualWinnings = hit ? betAmount * multiplier : 0;
+      await TradeLoggingService.resolveBet(betId, actual, hit, actualWinnings);
+
+      // Remove from active bets and log in Redis
+      await redisService.removeActiveBet(betId);
+      await redisService.addTradeLog({
+        timestamp: new Date().toISOString(),
+        action: 'bet_resolved',
+        amount: betAmount,
+        winnings: actualWinnings,
+        balanceAfter: balanceBefore, // Will be updated after all bets
+        description: `Bet ${hit ? 'won' : 'lost'}: ${actual} vs ${expectedValue}`
+      });
 
       outcomes.push({
         playerId: parlay.playerId,
@@ -335,6 +470,27 @@ export class BettingSimulator implements BettingSimulatorInterface {
     const betAmount = balanceBefore * 0.1; // Bet 10% of balance
     const winnings = multiplier > 0 ? betAmount * multiplier : 0;
     const balanceAfter = balanceBefore - betAmount + winnings;
+
+    // Update balance in Redis
+    await redisService.updateBalance(balanceAfter);
+    await redisService.addBalanceHistory(balanceAfter);
+
+    // Log balance update
+    await TradeLoggingService.logAction('balance_updated', {
+      description: `Game ${game._id}: ${allHits ? 'Won' : 'Lost'} parlay`,
+      amount: winnings - betAmount,
+      balanceBefore,
+      balanceAfter
+    }, game._id, undefined, this.currentSimulationId || undefined);
+
+    // Log balance update in Redis
+    await redisService.addTradeLog({
+      timestamp: new Date().toISOString(),
+      action: 'balance_updated',
+      amount: winnings - betAmount,
+      balanceAfter,
+      description: `Game ${game._id}: ${allHits ? 'Won' : 'Lost'} parlay`
+    });
 
     return {
       game_id: game._id,
@@ -412,5 +568,97 @@ export class BettingSimulator implements BettingSimulatorInterface {
       .lean();
 
     return simulatedTimeService.filterGamesByTime(allGames);
+  }
+
+  // ================================
+  // Trade Logging Methods
+  // ================================
+
+  /**
+   * Get recent trade logs
+   */
+  async getRecentTradeLogs(limit: number = 50) {
+    return await TradeLoggingService.getRecentTradeLogs(limit);
+  }
+
+  /**
+   * Get simulation history
+   */
+  async getSimulationHistory(limit: number = 20) {
+    return await TradeLoggingService.getSimulationHistory(limit);
+  }
+
+  /**
+   * Get bet history for a specific game
+   */
+  async getGameBets(gameId: string) {
+    return await TradeLoggingService.getGameBets(gameId);
+  }
+
+  /**
+   * Get analytics data
+   */
+  async getAnalytics() {
+    return await TradeLoggingService.getAnalytics();
+  }
+
+  /**
+   * Get current simulation ID
+   */
+  getCurrentSimulationId(): string | null {
+    return this.currentSimulationId;
+  }
+
+  // ================================
+  // Redis Real-time Methods
+  // ================================
+
+  /**
+   * Get current demo state from Redis
+   */
+  async getCurrentDemoState(): Promise<DemoState | null> {
+    return await redisService.getDemoState();
+  }
+
+  /**
+   * Get recent trade logs from Redis
+   */
+  async getRecentRedisLogs(limit: number = 50): Promise<TradeLogEntry[]> {
+    return await redisService.getRecentTradeLogs(limit);
+  }
+
+  /**
+   * Get active bets from Redis
+   */
+  async getActiveBets(): Promise<string[]> {
+    return await redisService.getActiveBets();
+  }
+
+  /**
+   * Get balance history from Redis
+   */
+  async getBalanceHistory(limit: number = 100): Promise<Array<{ timestamp: number; balance: number }>> {
+    return await redisService.getBalanceHistory(limit);
+  }
+
+  /**
+   * Get active simulation from Redis
+   */
+  async getActiveSimulation(): Promise<any> {
+    return await redisService.getActiveSimulation();
+  }
+
+  /**
+   * Clear all demo data from Redis
+   */
+  async clearRedisData(): Promise<void> {
+    await redisService.clearAllDemoData();
+  }
+
+  /**
+   * Get Redis connection status
+   */
+  isRedisConnected(): boolean {
+    return redisService.isRedisConnected();
   }
 }

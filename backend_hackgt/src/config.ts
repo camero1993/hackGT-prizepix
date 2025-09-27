@@ -11,6 +11,7 @@ export interface Config {
   port: number;
   nodeEnv: string;
   corsOrigin: string;
+  redisUrl: string;
 }
 
 // Get configuration from environment variables
@@ -21,7 +22,8 @@ export const config: Config = {
   dbName: process.env.DB_NAME || 'nba',
   port: parseInt(process.env.PORT || '8000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
-  corsOrigin: process.env.CORS_ORIGIN || '*'
+  corsOrigin: process.env.CORS_ORIGIN || '*',
+  redisUrl: process.env.REDIS_URL || 'redis://localhost:6379'
 };
 
 // MongoDB connection
