@@ -126,7 +126,7 @@ for game_result in result.game_results:
 
 ### **Run Tests**
 ```bash
-python test_user_parlays.py
+curl http://localhost:8000/simulate/example
 ```
 
 ### **Test Scenarios**

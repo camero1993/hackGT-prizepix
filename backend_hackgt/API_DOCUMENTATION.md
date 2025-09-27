@@ -15,13 +15,13 @@ pip install -r requirements.txt
 ### **Start Server**
 ```bash
 # Development mode (with auto-reload)
-python start_server.py --dev
+npm run dev --dev
 
 # Production mode
-python start_server.py
+npm run dev
 
 # Custom port
-python start_server.py --port=8080
+npm run dev --port=8080
 
 # Or directly with uvicorn
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
@@ -86,7 +86,7 @@ Fetch player information from the database.
   {
     "id": "201939",
     "fullName": "Giannis Antetokounmpo",
-    "headshotUrl": "https://cdn.nba.com/headshots/nba/latest/260x190/201939.png",
+    "headshotUrl": "https://example.com/player-headshots/201939.png",
     "position": "PF",
     "teamId": "1610612749",
     "active": true
@@ -353,10 +353,10 @@ docker run -p 8000:8000 nba-betting-api
 ### **Run Test Suite**
 ```bash
 # Start server first
-python start_server.py --dev
+npm run dev --dev
 
 # Run tests in another terminal
-python test_api.py
+curl http://localhost:8000/health
 ```
 
 ### **Test Coverage**
