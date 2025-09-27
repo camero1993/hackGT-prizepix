@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+
+    /* Font variables */
+    --font-sans: var(--geist-sans);
+    --font-mono: var(--geist-mono);
+
+    /* Chart colors */
+    --chart-1: 142 76% 36%; /* Green */
+    --chart-2: 221 83% 53%; /* Blue */
+    --chart-3: 0 84% 60%; /* Red */
+  }
+
+  .dark {
+    /* Updated dark theme with sports-inspired colors */
+    --background: 0 0% 7%; /* Deep black background */
+    --foreground: 0 0% 98%; /* Pure white text */
+    --card: 0 0% 10%; /* Dark card background */
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 14 100% 57%; /* Bold orange/red accent */
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 15%; /* Darker secondary */
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 14 100% 57%; /* Orange accent */
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 20%; /* Subtle borders */
+    --input: 0 0% 15%;
+    --ring: 14 100% 57%;
+
+    /* Sports betting specific colors */
+    --win: 142 76% 50%; /* Green for wins */
+    --loss: 0 84% 60%; /* Red for losses */
+    --pending: 45 93% 47%; /* Yellow for pending */
+  }
+
+  @keyframes pulse {
+    0% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.6;
+      transform: scale(1.5);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(2);
+    }
+  }
+
+  .animate-pulse {
+    animation: pulse 1s ease-out;
+  }
+
+  /* Added sports-themed animations */
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Added custom sports typography */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
+
+.font-sports {
+  font-family: "Inter", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
