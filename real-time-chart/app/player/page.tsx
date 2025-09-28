@@ -45,6 +45,37 @@ const stockData = [
   { date: "Mar 5", price: 67.2, volume: 2680 },
 ];
 // State
+// Mock portfolio data
+const portfolioData = [
+  {
+    player: "Please Search For A Player",
+    position: "QB",
+    shares: 150,
+    currentPrice: 67.2,
+    roi: 12.5,
+  },
+  {
+    player: "Christian McCaffrey",
+    position: "RB",
+    shares: 200,
+    currentPrice: 45.8,
+    roi: -3.2,
+  },
+  {
+    player: "Tyreek Hill",
+    position: "WR",
+    shares: 100,
+    currentPrice: 52.1,
+    roi: 8.7,
+  },
+  {
+    player: "Travis Kelce",
+    position: "TE",
+    shares: 75,
+    currentPrice: 38.9,
+    roi: 15.3,
+  },
+];
 
 const PLAYER_SELECTION_COUNT = 3;
 
@@ -142,6 +173,9 @@ export default function PlayerPage() {
   const [showSearchResults, setShowSearchResults] = useState(false);
 
   const [contractLength, setContractLength] = useState<number>(3);
+  const [selectedPlayers, setSelectedPlayers] = useState<(Player | null)[]>(
+    Array(PLAYER_SELECTION_COUNT).fill(null)
+  );
   const [selectedPlayers, setSelectedPlayers] = useState<(Player | null)[]>(
     Array(PLAYER_SELECTION_COUNT).fill(null)
   );
@@ -533,6 +567,7 @@ export default function PlayerPage() {
                   {/* Player Selection Slots */}
                   <div>
                     <label className="text-sm font-medium mb-2 block text-foreground">
+                      Pick {PLAYER_SELECTION_COUNT} Players
                       Pick {PLAYER_SELECTION_COUNT} Players
                     </label>
                     {selectedPlayers.map((player, i) => (
