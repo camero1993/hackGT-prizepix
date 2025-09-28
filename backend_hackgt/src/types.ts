@@ -55,7 +55,7 @@ export interface PlayerStats {
 export interface TradeLog {
   _id?: string;                    // Auto-generated ObjectId
   timestamp: Date;                 // When action occurred
-  actionType: 'bet_placed' | 'bet_resolved' | 'simulation_started' | 'simulation_ended' | 'balance_updated';
+  actionType: 'bet_placed' | 'bet_resolved' | 'parlay_created' | 'simulation_started' | 'simulation_ended' | 'balance_updated';
   gameId?: string;                 // Related game
   betId?: string;                  // Related bet
   simulationId?: string;           // Related simulation
@@ -108,6 +108,7 @@ export interface Parlay {
   _id: string;                     // Unique parlay ID
   gameId: string;                  // Game this parlay is for
   betIds: string[];                // Array of bet IDs in this parlay
+  betType: 'flex' | 'power';       // Type of bet for this parlay
   totalBetAmount: number;          // Total amount wagered
   multiplier: number;              // Final multiplier
   potentialWinnings: number;       // Total potential winnings
@@ -122,7 +123,6 @@ export interface Parlay {
 export interface ParlayRequest {
   playerId: string;
   stat: string;
-  betType: 'flex' | 'power';
 }
 
 // ================================
@@ -165,7 +165,6 @@ export interface ParlayOutcome {
   threshold: number;
   actual: number;
   hit: boolean;
-  betType: 'flex' | 'power';
 }
 
 export interface GameResult {
@@ -273,14 +272,10 @@ export interface EnrichedTeamGameResponse extends TeamGameResponse {
 // Request Models
 // ================================
 
-export interface Parlay {
-  playerId: string;
-  stat: string;
-  betType: 'flex' | 'power';
-}
 
 export interface SimulationRequest {
   contract_length: number;
+  betType: 'flex' | 'power';
   parlays: ParlayRequest[];
 }
 
@@ -292,9 +287,6 @@ export const ParlaySchema = z.object({
   playerId: z.string().min(1, 'Player ID is required'),
   stat: z.enum(['points', 'rebounds', 'assists'], {
     errorMap: () => ({ message: 'Stat must be one of: points, rebounds, assists' })
-  }),
-  betType: z.enum(['flex', 'power'], {
-    errorMap: () => ({ message: 'Bet type must be either flex or power' })
   })
 });
 
@@ -303,6 +295,9 @@ export const SimulationRequestSchema = z.object({
     .int('Contract length must be an integer')
     .min(1, 'Contract length must be at least 1')
     .max(10, 'Contract length cannot exceed 10'),
+  betType: z.enum(['flex', 'power'], {
+    errorMap: () => ({ message: 'Bet type must be either flex or power' })
+  }),
   parlays: z.array(ParlaySchema)
     .min(1, 'At least one parlay is required')
     .max(10, 'Maximum 10 parlays allowed')
@@ -361,11 +356,12 @@ export const TeamGamesQuerySchema = z.object({
 
 export interface BettingSimulatorInterface {
   loadStarPlayers(): Promise<void>;
+  loadAllPlayers(): Promise<void>;
   getPlayerInfo(playerId: string): Promise<{
     expected_values: Record<string, number>;
     games_analyzed: number;
   } | { error: string }>;
-  simulateContract(contractLength: number, parlays: Parlay[]): Promise<ContractResult>;
+  simulateContract(contractLength: number, parlays: ParlayRequest[], betType: 'flex' | 'power'): Promise<ContractResult>;
 }
 
 // ================================

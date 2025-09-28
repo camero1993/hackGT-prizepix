@@ -468,7 +468,8 @@ app.post('/simulate', handleAsync(async (req: Request, res: Response) => {
     // Run simulation
     const result = await bettingSimulator.simulateContract(
       request.contract_length,
-      request.parlays
+      request.parlays,
+      'flex' // or 'power', depending on your requirement
     );
     
     const response: SimulationResponse = result;

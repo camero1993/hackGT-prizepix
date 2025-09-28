@@ -35,6 +35,8 @@ import {
 } from "@/components/ui/chart";
 import Link from "next/link";
 import { searchPlayers, getTeamById, Player, Team } from "@/lib/api";
+import { NewsSnippet, NewsSnippetsContainer } from "../../../search-page/news-snippet";
+import { NewsApiService, NewsSnippetData } from "@/lib/newsApi";
 
 // Mock data for player stock price
 const stockData = [
@@ -43,37 +45,6 @@ const stockData = [
   { date: "Mar 5", price: 67.2, volume: 2680 },
 ];
 // State
-// Mock portfolio data
-const portfolioData = [
-  {
-    player: "Please Search For A Player",
-    position: "QB",
-    shares: 150,
-    currentPrice: 67.2,
-    roi: 12.5,
-  },
-  {
-    player: "Christian McCaffrey",
-    position: "RB",
-    shares: 200,
-    currentPrice: 45.8,
-    roi: -3.2,
-  },
-  {
-    player: "Tyreek Hill",
-    position: "WR",
-    shares: 100,
-    currentPrice: 52.1,
-    roi: 8.7,
-  },
-  {
-    player: "Travis Kelce",
-    position: "TE",
-    shares: 75,
-    currentPrice: 38.9,
-    roi: 15.3,
-  },
-];
 
 const PLAYER_SELECTION_COUNT = 3;
 
@@ -182,6 +153,8 @@ export default function PlayerPage() {
     assists: number;
   }
   const [playerStats, setPlayerStats] = useState<PlayerGameStat[]>([]);
+  const [newsData, setNewsData] = useState<NewsSnippetData[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
 
   // Default player data (Josh Allen fallback)
   const defaultPlayerData = null;
@@ -240,6 +213,7 @@ export default function PlayerPage() {
       }
     }
 
+    // Fetch player stats
     try {
       const res = await fetch(
         `http://localhost:8000/playerGameStats?playerId=${player.id}`
@@ -265,6 +239,19 @@ export default function PlayerPage() {
     } catch (err) {
       console.error("Error fetching player stats:", err);
       setPlayerStats([]);
+    }
+
+    // Fetch news for the selected player
+    setNewsLoading(true);
+    try {
+      const articles = await NewsApiService.getPlayerNewsLastWeek(player.fullName, 5);
+      const transformedNews = articles.map(NewsApiService.transformArticleToNewsSnippet);
+      setNewsData(transformedNews);
+    } catch (error) {
+      console.error("Error fetching player news:", error);
+      setNewsData([]);
+    } finally {
+      setNewsLoading(false);
     }
   };
 
@@ -295,9 +282,7 @@ export default function PlayerPage() {
       }
     : null;
 
-  const currentHoldings = displayPlayer
-    ? portfolioData.find((p) => p.player === displayPlayer.name)
-    : null;
+  // Note: Portfolio data removed - now using news data instead
 
   return (
     <div className="dark min-h-screen bg-background">
@@ -618,141 +603,49 @@ export default function PlayerPage() {
                 </CardContent>
               </Card>
 
-              {/* Current Position */}
-              <Card className="bg-card border-border">
-                <CardHeader>
-                  <CardTitle className="text-foreground">
-                    Current Position
-                  </CardTitle>
-                  <CardDescription className="text-muted-foreground">
-                    Your holdings for this player
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {currentHoldings ? (
-                    <>
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            Current Holdings
-                          </span>
-                          <span className="font-medium text-foreground">
-                            {currentHoldings.shares} shares
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            Current Value
-                          </span>
-                          <span className="font-medium text-foreground">
-                            $
-                            {(
-                              currentHoldings.shares *
-                              currentHoldings.currentPrice
-                            ).toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">ROI</span>
-                          <span
-                            className={`font-medium ${
-                              currentHoldings.roi >= 0
-                                ? "text-green-500"
-                                : "text-red-500"
-                            }`}
-                          >
-                            {currentHoldings.roi >= 0 ? "+" : ""}
-                            {currentHoldings.roi}%
-                          </span>
-                        </div>
-                      </div>
-
-                      <Button
-                        variant="destructive"
-                        className="w-full text-white"
-                        size="lg"
-                      >
-                        Cash Out Position
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="w-full text-white border-white hover:bg-white hover:text-black"
-                      >
-                        Partial Cash Out
-                      </Button>
-                    </>
-                  ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <p>No current position for this player</p>
-                      <p className="text-sm mt-1">
-                        Place a bet to start trading
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
             </div>
           </div>
 
-          {/* Portfolio Sidebar */}
+          {/* News Sidebar */}
           <div className="lg:col-span-1">
             <Card className="sticky top-6 bg-card border-border">
               <CardHeader>
-                <CardTitle className="text-foreground">My Portfolio</CardTitle>
+                <CardTitle className="text-foreground">Latest News</CardTitle>
                 <CardDescription className="text-muted-foreground">
-                  Current holdings summary
+                  {selectedPlayer ? `News about ${selectedPlayer.fullName}` : "Select a player to see news"}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {portfolioData.map((holding) => (
-                  <div
-                    key={holding.player}
-                    className="p-3 rounded-lg bg-muted/20 space-y-2"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium text-sm text-foreground">
-                          {holding.player}
-                        </p>
-                        <Badge variant="outline" className="text-xs">
-                          {holding.position}
-                        </Badge>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-foreground">
-                          ${holding.currentPrice}
-                        </p>
-                        <p
-                          className={`text-xs ${
-                            holding.roi >= 0 ? "text-green-500" : "text-red-500"
-                          }`}
-                        >
-                          {holding.roi >= 0 ? "+" : ""}
-                          {holding.roi}%
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{holding.shares} shares</span>
-                      <span>
-                        ${(holding.shares * holding.currentPrice).toFixed(0)}
-                      </span>
-                    </div>
+              <CardContent>
+                {newsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                    <p className="text-muted-foreground mt-2">Loading news...</p>
                   </div>
-                ))}
-
-                <div className="pt-4 border-t border-border">
-                  <div className="flex justify-between text-sm font-medium">
-                    <span className="text-foreground">
-                      Total Portfolio Value
-                    </span>
-                    <span className="text-green-500">$24,847</span>
+                ) : newsData.length > 0 ? (
+                  <NewsSnippetsContainer>
+                    {newsData.map((news, index) => (
+                      <NewsSnippet
+                        key={index}
+                        title={news.title}
+                        content={news.content}
+                        source={news.source}
+                        publishedAt={news.publishedAt}
+                        sentiment={news.sentiment}
+                        playerName={news.playerName}
+                        url={news.url}
+                      />
+                    ))}
+                  </NewsSnippetsContainer>
+                ) : selectedPlayer ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">No recent news found for {selectedPlayer.fullName}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Try searching for a different player</p>
                   </div>
-                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                    <span>Total ROI</span>
-                    <span className="text-green-500">+8.3%</span>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">Select a player to see their latest news</p>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </div>

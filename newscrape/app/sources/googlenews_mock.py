@@ -31,36 +31,36 @@ class MockGoogleNewsAdapter:
             league=League.UNKNOWN
         )
         
-        # Sample news data
+        # Sample news data with realistic URLs
         self.sample_articles = [
             {
                 "title": "LeBron James Leads Lakers to Victory in Overtime Thriller",
                 "summary": "LeBron James scored 35 points and grabbed 12 rebounds as the Los Angeles Lakers defeated the Golden State Warriors 128-125 in overtime.",
-                "url": "https://example.com/lebron-lakers-victory",
+                "url": "https://www.espn.com/nba/story/_/id/lebron-lakers-victory-overtime",
                 "source": "ESPN"
             },
             {
                 "title": "Stephen Curry Breaks Three-Point Record in Warriors Win",
                 "summary": "Stephen Curry made 8 three-pointers to break the single-game record as the Warriors beat the Celtics 115-110.",
-                "url": "https://example.com/curry-three-point-record",
+                "url": "https://www.nba.com/news/curry-three-point-record",
                 "source": "NBA.com"
             },
             {
                 "title": "Nikola Jokić Triple-Double Powers Nuggets Past Heat",
                 "summary": "Nikola Jokić recorded his 15th triple-double of the season with 28 points, 14 rebounds, and 10 assists.",
-                "url": "https://example.com/jokic-triple-double",
+                "url": "https://www.cbssports.com/nba/news/jokic-triple-double-nuggets",
                 "source": "CBS Sports"
             },
             {
                 "title": "Jayson Tatum Scores 40 Points in Celtics Comeback Win",
                 "summary": "Jayson Tatum led the Boston Celtics to a comeback victory over the Miami Heat with 40 points and 8 rebounds.",
-                "url": "https://example.com/tatum-celtics-comeback",
+                "url": "https://bleacherreport.com/articles/tatum-celtics-comeback",
                 "source": "Bleacher Report"
             },
             {
                 "title": "Giannis Antetokounmpo Dominates in Bucks Victory",
                 "summary": "Giannis Antetokounmpo had 32 points, 15 rebounds, and 7 assists as the Milwaukee Bucks defeated the Philadelphia 76ers.",
-                "url": "https://example.com/giannis-bucks-victory",
+                "url": "https://sports.yahoo.com/giannis-bucks-victory-76ers",
                 "source": "Yahoo Sports"
             }
         ]

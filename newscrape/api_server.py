@@ -16,7 +16,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from app.sources.googlenews_mock import MockGoogleNewsAdapter as GoogleNewsAdapter
+try:
+    from app.sources.googlenews import GoogleNewsAdapter
+except ImportError as e:
+    print(f"Warning: Real Google News adapter not available: {e}")
+    print("Falling back to mock adapter for testing purposes.")
+    from app.sources.googlenews_mock import MockGoogleNewsAdapter as GoogleNewsAdapter
 from app.ingest.normalizer import ArticleNormalizer
 from app.storage.export import ArticleExporter, ExportFormat
 

@@ -2,6 +2,7 @@ import { Header } from "@/components/header"
 import { BettingBalanceChart } from "@/components/betting-balance-chart"
 import { SuggestedBets } from "@/components/suggested-bets"
 import { PortfolioChart } from "@/components/portfolio-chart"
+import { ExampleNewsSnippets } from "./news-snippet"
 
 export default function HomePage() {
   return (
@@ -23,6 +24,11 @@ export default function HomePage() {
             <div className="lg:col-span-1">
               <PortfolioChart />
             </div>
+          </div>
+
+          {/* News Snippets */}
+          <div className="w-full">
+            <ExampleNewsSnippets />
           </div>
         </div>
       </main>
