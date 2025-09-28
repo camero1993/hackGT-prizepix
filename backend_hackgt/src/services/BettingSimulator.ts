@@ -120,64 +120,61 @@ export class BettingSimulator implements BettingSimulatorInterface {
     try {
       console.log('🔄 Loading star players for demo...');
       console.log(`Loading ${STAR_PLAYER_IDS.length} star players...`);
-      
-      // Calculate expected values for each star player
-      for (const playerId of STAR_PLAYER_IDS) {
-        const expectedValues = await this.calculatePlayerExpectedValues(playerId);
-        if (expectedValues) {
-          this.playerThresholds[playerId] = expectedValues;
+
+      // Pull all star player stats in a single aggregation to avoid per-player queries
+      const aggregatedStats = await PlayerGameStatsModel.aggregate<{ 
+        _id: string;
+        gamesAnalyzed: number;
+        avgPoints: number;
+        avgRebounds: number;
+        avgAssists: number;
+      }>([
+        {
+          $match: {
+            season: '2024-25',
+            playerId: { $in: STAR_PLAYER_IDS }
+          }
+        },
+        {
+          // Filter out placeholder games with no recorded stats
+          $match: {
+            $expr: {
+              $gt: [
+                { $add: ['$points', '$rebounds', '$assists'] },
+                0
+              ]
+            }
+          }
+        },
+        {
+          $group: {
+            _id: '$playerId',
+            gamesAnalyzed: { $sum: 1 },
+            avgPoints: { $avg: '$points' },
+            avgRebounds: { $avg: '$rebounds' },
+            avgAssists: { $avg: '$assists' }
+          }
+        },
+        {
+          $match: {
+            gamesAnalyzed: { $gte: MIN_VALID_GAMES }
+          }
         }
-      }
-      
+      ]);
+
+      this.playerThresholds = aggregatedStats.reduce<PlayerThresholds>((acc, statLine) => {
+        acc[statLine._id] = {
+          points: Math.round(statLine.avgPoints * 10) / 10,
+          rebounds: Math.round(statLine.avgRebounds * 10) / 10,
+          assists: Math.round(statLine.avgAssists * 10) / 10
+        };
+        return acc;
+      }, {});
+
       console.log(`✅ Loaded expected values for ${Object.keys(this.playerThresholds).length} star players`);
     } catch (error) {
       console.error('Error loading star players:', error);
       throw error;
-    }
-  }
-
-  /**
-   * Calculate expected values (betting lines) for a specific player
-   * Uses all stats from the entire 24-25 season
-   */
-  private async calculatePlayerExpectedValues(playerId: string): Promise<{ points: number; rebounds: number; assists: number } | null> {
-    try {
-      // Get player stats for entire 24-25 season
-      const actualStats = await PlayerGameStatsModel
-        .find({ 
-          playerId,
-          season: '2024-25'
-        })
-        .sort({ gameDateUTC: -1 })
-        .lean(); // Execute query and return plain objects
-
-      // Filter out games with zero stats (likely placeholder data)
-      const validStats = actualStats.filter(stat => 
-        stat.points > 0 || stat.rebounds > 0 || stat.assists > 0
-      );
-      
-      if (validStats.length < MIN_VALID_GAMES) {
-        console.log(`Player ${playerId}: Only ${validStats.length} valid games found`);
-        return null; // Not enough valid data
-      }
-
-      // Calculate expected value (mean) for each stat using valid games only
-      const points = validStats.map(s => s.points);
-      const rebounds = validStats.map(s => s.rebounds);
-      const assists = validStats.map(s => s.assists);
-
-      const calculateMean = (arr: number[]): number => {
-        return arr.reduce((sum, val) => sum + val, 0) / arr.length;
-      };
-
-      return {
-        points: Math.round(calculateMean(points) * 10) / 10, // Round to 1 decimal
-        rebounds: Math.round(calculateMean(rebounds) * 10) / 10,
-        assists: Math.round(calculateMean(assists) * 10) / 10
-      };
-    } catch (error) {
-      console.error(`Error calculating expected values for player ${playerId}:`, error);
-      return null;
     }
   }
 

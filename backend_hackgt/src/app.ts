@@ -168,7 +168,7 @@ app.get('/debug/players', async (req, res) => {
     // Get actual players from database
     const players = await mongoose.connection.db?.collection('players')
       .find({ active: true })
-      .limit(10)
+      .limit(100)
       .project({ _id: 1, fullName: 1 })
       .toArray();
     
@@ -198,7 +198,7 @@ app.get('/debug/players', async (req, res) => {
 app.get('/debug/star-loading', async (req, res) => {
   try {
     const playerThresholds = bettingSimulator.getPlayerThresholds();
-    const starPlayerIds = ['201939', '203999', '1628369', '2544', '203952'];
+    const starPlayerIds = ['019392', '203999', '1628369', '2544', '203952'];
     
     // Test query for one player - get more games to find valid data
     const testQuery = await mongoose.connection.db?.collection('playerGameStats')
@@ -897,6 +897,16 @@ app.post('/api/demo/clear', handleAsync(async (req: Request, res: Response) => {
 // ================================
 // Error Handling Middleware
 // ================================
+app.get("/playerGameStats", async (req, res) => {
+  const { playerId } = req.query;
+  if (!playerId) return res.status(400).json({ error: "playerId required" });
+
+  const stats = await mongoose.connection.db?.collection('playerGameStats')
+    .find({ playerId: playerId.toString() })
+    .toArray();
+
+  res.json(stats);
+});
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Unhandled error:', err);
