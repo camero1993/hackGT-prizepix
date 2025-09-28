@@ -1,0 +1,130 @@
+# Sports News Sources Configuration
+# Curated list of reliable, free news sources (no API keys required)
+
+# ESPN RSS Feeds (Most reliable, comprehensive coverage)
+- id: espn-nba-rss
+  type: rss
+  league: nba
+  url: https://www.espn.com/espn/rss/nba/news
+  rate_limit: { per_second: 2 }
+
+- id: espn-nfl-rss
+  type: rss
+  league: nfl
+  url: https://www.espn.com/espn/rss/nfl/news
+  rate_limit: { per_second: 2 }
+
+- id: espn-mlb-rss
+  type: rss
+  league: mlb
+  url: https://www.espn.com/espn/rss/mlb/news
+  rate_limit: { per_second: 2 }
+
+# CBS Sports (Reliable, good player coverage)
+- id: cbs-nba-rss
+  type: rss
+  league: nba
+  url: https://www.cbssports.com/rss/nba
+  rate_limit: { per_second: 1 }
+
+- id: cbs-nfl-rss
+  type: rss
+  league: nfl
+  url: https://www.cbssports.com/rss/nfl
+  rate_limit: { per_second: 1 }
+
+- id: cbs-mlb-rss
+  type: rss
+  league: mlb
+  url: https://www.cbssports.com/rss/mlb
+  rate_limit: { per_second: 1 }
+
+# Yahoo Sports (Good for breaking news)
+- id: yahoo-nba-rss
+  type: rss
+  league: nba
+  url: https://sports.yahoo.com/nba/rss.xml
+  rate_limit: { per_second: 1 }
+
+- id: yahoo-nfl-rss
+  type: rss
+  league: nfl
+  url: https://sports.yahoo.com/nfl/rss.xml
+  rate_limit: { per_second: 1 }
+
+- id: yahoo-mlb-rss
+  type: rss
+  league: mlb
+  url: https://sports.yahoo.com/mlb/rss.xml
+  rate_limit: { per_second: 1 }
+
+# Bleacher Report (Good for player-specific content)
+- id: bleacher-nba-rss
+  type: rss
+  league: nba
+  url: https://bleacherreport.com/nba/rss
+  rate_limit: { per_second: 1 }
+
+- id: bleacher-nfl-rss
+  type: rss
+  league: nfl
+  url: https://bleacherreport.com/nfl/rss
+  rate_limit: { per_second: 1 }
+
+- id: bleacher-mlb-rss
+  type: rss
+  league: mlb
+  url: https://bleacherreport.com/mlb/rss
+  rate_limit: { per_second: 1 }
+
+# NBC Sports (Reliable, good analysis)
+- id: nbcsports-nba-rss
+  type: rss
+  league: nba
+  url: https://www.nbcsports.com/nba/rss
+  rate_limit: { per_second: 1 }
+
+- id: nbcsports-nfl-rss
+  type: rss
+  league: nfl
+  url: https://www.nbcsports.com/nfl/rss
+  rate_limit: { per_second: 1 }
+
+# Fox Sports (Good for breaking news)
+- id: foxsports-nba-rss
+  type: rss
+  league: nba
+  url: https://www.foxsports.com/nba/rss
+  rate_limit: { per_second: 1 }
+
+- id: foxsports-nfl-rss
+  type: rss
+  league: nfl
+  url: https://www.foxsports.com/nfl/rss
+  rate_limit: { per_second: 1 }
+
+# The Athletic (If you have access - high quality content)
+- id: athletic-nba-rss
+  type: rss
+  league: nba
+  url: https://theathletic.com/nba/rss/
+  rate_limit: { per_second: 1 }
+
+- id: athletic-nfl-rss
+  type: rss
+  league: nfl
+  url: https://theathletic.com/nfl/rss/
+  rate_limit: { per_second: 1 }
+
+# Sports Illustrated (Classic, reliable source)
+- id: si-nba-rss
+  type: rss
+  league: nba
+  url: https://www.si.com/nba/rss
+  rate_limit: { per_second: 1 }
+
+- id: si-nfl-rss
+  type: rss
+  league: nfl
+  url: https://www.si.com/nfl/rss
+  rate_limit: { per_second: 1 }

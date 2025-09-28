@@ -27,6 +27,9 @@ import {
   Parlay
 } from './types';
 import { simulatedTimeService } from './services/SimulatedTimeService';
+import { pythonAPIManager } from './services/PythonAPIManager';
+import { redisService } from './services/RedisService';
+import { TradeLoggingService } from './services/TradeLoggingService';
 import mongoose from 'mongoose';
 
 // Initialize Express app
@@ -135,6 +138,23 @@ app.get('/', (req: Request, res: Response) => {
           bet_holdings: '/api/bets/holdings',
           initialize_demo: '/api/demo/initialize',
           clear_demo: '/api/demo/clear'
+
+        },
+        python_news_api: {
+          status: '/api/python/status',
+          start: '/api/python/start',
+          stop: '/api/python/stop',
+          test: '/api/python/test',
+          base_url: 'http://localhost:5001',
+          endpoints: {
+            health: 'http://localhost:5001/health',
+            headlines: 'http://localhost:5001/api/headlines',
+            search_player: 'http://localhost:5001/api/search/player',
+            search_nba_athletes: 'http://localhost:5001/api/search/nba-athletes',
+            search_multiple_players: 'http://localhost:5001/api/search/multiple-players'
+          }
+
+
         }
       }
     }
@@ -836,31 +856,88 @@ app.get('/api/balance/history', handleAsync(async (req: Request, res: Response) 
   }
 }));
 
-// Get all bet holdings (recent bets from MongoDB)
+
+// Get all bet holdings (recent bets from MongoDB) with player data
+
 app.get('/api/bets/holdings', handleAsync(async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
     const status = req.query.status as string; // Optional filter by status
     
-    // Get recent trade logs to find bet IDs
-    const tradeLogs = await TradeLoggingService.getRecentTradeLogs(limit * 2);
-    const betIds = tradeLogs
-      .filter(log => log.betId)
-      .map(log => log.betId!)
-      .slice(0, limit);
-    
-    if (betIds.length === 0) {
-      res.json([]);
+
+    // Check database connection
+    if (!mongoose.connection.db) {
+      res.status(503).json({ error: 'Database not connected' });
       return;
     }
     
-    // Get bet details from MongoDB
-    const bets = await TradeLoggingService.getBetsByIds(betIds);
+    // Build match stage for status filter
+    const matchStage: any = {};
+    if (status) {
+      matchStage.status = status;
+    }
     
-    // Filter by status if provided
-    const filteredBets = status ? bets.filter(bet => bet.status === status) : bets;
+    // Use MongoDB aggregation to join bet data with player data
+    const pipeline = [
+      // Match bets (with optional status filter)
+      { $match: matchStage },
+      
+      // Sort by creation date (most recent first)
+      { $sort: { createdAt: -1 } },
+      
+      // Limit results
+      { $limit: limit },
+      
+      // Lookup player information
+      {
+        $lookup: {
+          from: 'players',
+          localField: 'playerId',
+          foreignField: '_id',
+          as: 'player'
+        }
+      },
+      
+      // Unwind player array (should be single player)
+      { $unwind: { path: '$player', preserveNullAndEmptyArrays: true } },
+      
+      // Project final structure with player data
+      {
+        $project: {
+          _id: 1,
+          gameId: 1,
+          playerId: 1,
+          stat: 1,
+          betType: 1,
+          threshold: 1,
+          actual: 1,
+          hit: 1,
+          betAmount: 1,
+          multiplier: 1,
+          potentialWinnings: 1,
+          actualWinnings: 1,
+          status: 1,
+          createdAt: 1,
+          resolvedAt: 1,
+          parlayId: 1,
+          simulationId: 1,
+          __v: 1,
+          // Player data
+          playerName: '$player.fullName',
+          playerHeadshot: '$player.headshotUrl',
+          playerPosition: '$player.position',
+          playerTeamId: '$player.currentTeamId'
+        }
+      }
+    ];
     
-    res.json(filteredBets);
+    // Execute aggregation
+    const enrichedBets = await mongoose.connection.db.collection('bets')
+      .aggregate(pipeline)
+      .toArray();
+    
+    res.json(enrichedBets);
+    
   } catch (error) {
     console.error('Error fetching bet holdings:', error);
     res.status(500).json({ error: 'Failed to fetch bet holdings' });
@@ -891,6 +968,89 @@ app.post('/api/demo/clear', handleAsync(async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error clearing demo data:', error);
     res.status(500).json({ error: 'Failed to clear demo data' });
+  }
+}));
+
+
+// Clear all bet holdings from MongoDB (for testing)
+app.post('/api/bets/clear', handleAsync(async (req: Request, res: Response) => {
+  try {
+    // Check database connection
+    if (!mongoose.connection.db) {
+      res.status(503).json({ error: 'Database not connected' });
+      return;
+    }
+    
+    // Get count before deletion
+    const countBefore = await mongoose.connection.db.collection('bets').countDocuments();
+    
+    // Delete all bet holdings
+    const deleteResult = await mongoose.connection.db.collection('bets').deleteMany({});
+    
+    res.json({ 
+      message: 'Bet holdings cleared from MongoDB',
+      deletedCount: deleteResult.deletedCount,
+      countBefore: countBefore
+    });
+  } catch (error) {
+    console.error('Error clearing bet holdings:', error);
+    res.status(500).json({ error: 'Failed to clear bet holdings' });
+  }
+}));
+
+// ================================
+// Python API Management Endpoints
+// ================================
+
+// Get Python API status
+app.get('/api/python/status', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const status = await pythonAPIManager.getPythonAPIStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting Python API status:', error);
+    res.status(500).json({ error: 'Failed to get Python API status' });
+  }
+}));
+
+// Start Python API
+app.post('/api/python/start', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const success = await pythonAPIManager.startPythonAPI();
+    if (success) {
+      res.json({ message: 'Python API started successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to start Python API' });
+    }
+  } catch (error) {
+    console.error('Error starting Python API:', error);
+    res.status(500).json({ error: 'Failed to start Python API' });
+  }
+}));
+
+// Stop Python API
+app.post('/api/python/stop', handleAsync(async (req: Request, res: Response) => {
+  try {
+    pythonAPIManager.stopPythonAPI();
+    res.json({ message: 'Python API stop requested' });
+  } catch (error) {
+    console.error('Error stopping Python API:', error);
+    res.status(500).json({ error: 'Failed to stop Python API' });
+  }
+}));
+
+// Test Python API
+app.get('/api/python/test', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const success = await pythonAPIManager.testPythonAPI();
+    if (success) {
+      res.json({ message: 'Python API test successful' });
+    } else {
+      res.status(500).json({ error: 'Python API test failed' });
+    }
+  } catch (error) {
+    console.error('Error testing Python API:', error);
+    res.status(500).json({ error: 'Failed to test Python API' });
   }
 }));
 
@@ -940,15 +1100,29 @@ const startServer = async () => {
     await bettingSimulator.loadStarPlayers();
     console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} star players`);
     
+    // Start Python API server
+    console.log('🐍 Starting Python News API server...');
+    const pythonAPIStarted = await pythonAPIManager.startPythonAPI();
+    if (pythonAPIStarted) {
+      console.log('✅ Python News API started successfully');
+    } else {
+      console.log('⚠️  Python News API failed to start - continuing without it');
+    }
+    
     // Start server
     const server = app.listen(config.port, () => {
       console.log(`✅ Server running on port ${config.port}`);
       console.log(`📚 API Documentation: http://localhost:${config.port}/`);
+      console.log(`🐍 Python News API: http://localhost:5001/`);
     });
     
     // Graceful shutdown
     const gracefulShutdown = async () => {
       console.log('\n🛑 Shutting down gracefully...');
+      
+      // Stop Python API
+      pythonAPIManager.stopPythonAPI();
+      
       server.close(async () => {
         await disconnectFromDatabase();
         process.exit(0);

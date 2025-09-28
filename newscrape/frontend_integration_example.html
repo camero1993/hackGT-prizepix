@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports News API Integration Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h2 {
+            color: #666;
+            margin-top: 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #155724;
+            background-color: #d4edda;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .article {
+            border: 1px solid #eee;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .article h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .article a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .article a:hover {
+            text-decoration: underline;
+        }
+        .article-meta {
+            color: #666;
+            font-size: 0.9em;
+            margin: 5px 0;
+        }
+        .headline {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        .search-results {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        input[type="text"] {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏀 Sports News API Integration Example</h1>
+        
+        <div class="section">
+            <h2>API Health Check</h2>
+            <button onclick="checkHealth()">Check API Health</button>
+            <div id="health-result"></div>
+        </div>
+
+        <div class="section">
+            <h2>Player Headlines</h2>
+            <input type="text" id="player-input" placeholder="Enter player name" value="LeBron James">
+            <button onclick="getPlayerHeadlines()">Get Headlines</button>
+            <div id="headlines-result"></div>
+        </div>
+
+        <div class="section">
+            <h2>All NBA Headlines</h2>
+            <button onclick="getAllNBAHeadlines()">Get All NBA Headlines</button>
+            <div id="nba-headlines-result"></div>
+        </div>
+
+        <div class="section">
+            <h2>Player Search</h2>
+            <input type="text" id="search-input" placeholder="Enter player name" value="Stephen Curry">
+            <button onclick="searchPlayer()">Search Player</button>
+            <div id="search-result"></div>
+        </div>
+
+        <div class="section">
+            <h2>NBA Athletes Search</h2>
+            <button onclick="searchNBAAthletes()">Search All NBA Athletes</button>
+            <div id="nba-search-result"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:5001';
+
+        // Utility function to make API calls
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                throw error;
+            }
+        }
+
+        // Display loading state
+        function showLoading(elementId) {
+            document.getElementById(elementId).innerHTML = '<div class="loading">Loading...</div>';
+        }
+
+        // Display error message
+        function showError(elementId, message) {
+            document.getElementById(elementId).innerHTML = `<div class="error">Error: ${message}</div>`;
+        }
+
+        // Display success message
+        function showSuccess(elementId, message) {
+            document.getElementById(elementId).innerHTML = `<div class="success">${message}</div>`;
+        }
+
+        // Check API health
+        async function checkHealth() {
+            showLoading('health-result');
+            try {
+                const result = await apiCall('/health');
+                showSuccess('health-result', `API is healthy! Service: ${result.service}, Status: ${result.status}`);
+            } catch (error) {
+                showError('health-result', error.message);
+            }
+        }
+
+        // Get headlines for a specific player
+        async function getPlayerHeadlines() {
+            const playerName = document.getElementById('player-input').value;
+            if (!playerName.trim()) {
+                showError('headlines-result', 'Please enter a player name');
+                return;
+            }
+
+            showLoading('headlines-result');
+            try {
+                const result = await apiCall(`/api/headlines?player=${encodeURIComponent(playerName)}`);
+                
+                let html = `<h3>Headlines for ${result.player}</h3>`;
+                if (result.headlines && result.headlines.length > 0) {
+                    result.headlines.forEach(headline => {
+                        html += `
+                            <div class="article headline">
+                                <h3>${headline.title}</h3>
+                                <a href="${headline.url}" target="_blank">Read more</a>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<p>No headlines found for this player.</p>';
+                }
+                
+                document.getElementById('headlines-result').innerHTML = html;
+            } catch (error) {
+                showError('headlines-result', error.message);
+            }
+        }
+
+        // Get all NBA headlines
+        async function getAllNBAHeadlines() {
+            showLoading('nba-headlines-result');
+            try {
+                const result = await apiCall('/api/headlines');
+                
+                let html = '<h3>All NBA Headlines</h3>';
+                
+                if (result.top_headlines && result.top_headlines.length > 0) {
+                    html += '<h4>Top Headlines:</h4>';
+                    result.top_headlines.forEach(headline => {
+                        html += `
+                            <div class="article headline">
+                                <h3>${headline.title}</h3>
+                                <a href="${headline.url}" target="_blank">Read more</a>
+                            </div>
+                        `;
+                    });
+                }
+                
+                if (result.athlete_headlines) {
+                    html += '<h4>By Athlete:</h4>';
+                    Object.keys(result.athlete_headlines).forEach(athlete => {
+                        const headlines = result.athlete_headlines[athlete];
+                        if (headlines.length > 0) {
+                            html += `<h5>${athlete}:</h5>`;
+                            headlines.forEach(headline => {
+                                html += `
+                                    <div class="article headline">
+                                        <h3>${headline.title}</h3>
+                                        <a href="${headline.url}" target="_blank">Read more</a>
+                                    </div>
+                                `;
+                            });
+                        }
+                    });
+                }
+                
+                document.getElementById('nba-headlines-result').innerHTML = html;
+            } catch (error) {
+                showError('nba-headlines-result', error.message);
+            }
+        }
+
+        // Search for a specific player
+        async function searchPlayer() {
+            const playerName = document.getElementById('search-input').value;
+            if (!playerName.trim()) {
+                showError('search-result', 'Please enter a player name');
+                return;
+            }
+
+            showLoading('search-result');
+            try {
+                const result = await apiCall(`/api/search/player?player=${encodeURIComponent(playerName)}&max_results=5`);
+                
+                let html = `<h3>Search Results for ${result.player}</h3>`;
+                html += `<p>Found ${result.total_articles} articles</p>`;
+                
+                if (result.articles && result.articles.length > 0) {
+                    html += '<div class="search-results">';
+                    result.articles.forEach(article => {
+                        html += `
+                            <div class="article">
+                                <h3>${article.title}</h3>
+                                <div class="article-meta">
+                                    Published: ${new Date(article.published_at).toLocaleDateString()}
+                                    | Source: ${article.source.name}
+                                    | League: ${article.league}
+                                </div>
+                                <p>${article.summary || 'No summary available'}</p>
+                                <a href="${article.url}" target="_blank">Read full article</a>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                } else {
+                    html += '<p>No articles found for this player.</p>';
+                }
+                
+                document.getElementById('search-result').innerHTML = html;
+            } catch (error) {
+                showError('search-result', error.message);
+            }
+        }
+
+        // Search all NBA athletes
+        async function searchNBAAthletes() {
+            showLoading('nba-search-result');
+            try {
+                const result = await apiCall('/api/search/nba-athletes?max_results_per_player=2');
+                
+                let html = '<h3>NBA Athletes Search Results</h3>';
+                html += `<p>Total articles found: ${result.total_articles}</p>`;
+                
+                if (result.results) {
+                    Object.keys(result.results).forEach(athlete => {
+                        const athleteData = result.results[athlete];
+                        html += `<h4>${athlete} (${athleteData.count} articles):</h4>`;
+                        
+                        if (athleteData.articles && athleteData.articles.length > 0) {
+                            athleteData.articles.forEach(article => {
+                                html += `
+                                    <div class="article">
+                                        <h3>${article.title}</h3>
+                                        <div class="article-meta">
+                                            Published: ${new Date(article.published_at).toLocaleDateString()}
+                                            | Source: ${article.source.name}
+                                        </div>
+                                        <p>${article.summary || 'No summary available'}</p>
+                                        <a href="${article.url}" target="_blank">Read full article</a>
+                                    </div>
+                                `;
+                            });
+                        } else {
+                            html += '<p>No articles found for this athlete.</p>';
+                        }
+                    });
+                }
+                
+                document.getElementById('nba-search-result').innerHTML = html;
+            } catch (error) {
+                showError('nba-search-result', error.message);
+            }
+        }
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Sports News API Integration Example loaded');
+            console.log('Make sure the API server is running on http://localhost:5001');
+        });
+    </script>
+</body>
+</html>

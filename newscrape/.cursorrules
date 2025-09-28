@@ -1,0 +1,457 @@
+# .cursorrules
+
+> **Goal**: Build a reliable, legally-compliant news scraper/ingester that fetches *articles by player within a date range*, normalizes them to a common schema, and exposes simple CLI + library functions. Prefer official RSS/Atom + documented content APIs; use HTML scraping only when a source has no feed/API.
+
+---
+
+## PROJECT CONTEXT
+
+* App: **sports-news-scraper**
+* Primary language: **Python 3.11+**
+* Runtime: cross‑platform (macOS/Linux CI)
+* Timezone defaults: **America/New_York**
+* Data store: start with **SQLite** (local dev) → optional Postgres in prod
+* Packaging: **uv** or **pip+venv**; lock with **uv pip compile** or **pip-tools** (ok to use plain `pip` initially)
+* Scheduler: **cron** or lightweight **APScheduler** job
+
+---
+
+## 🚀 QUICK START (pygooglenews path)
+
+**Goal**: get "articles by player within date range" working ASAP using Google News via `pygooglenews` (RSS wrapper).
+
+### 0) Create & activate env
+
+```bash
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install --upgrade pip
+```
+
+### 1) Install minimal deps
+
+```bash
+pip install pygooglenews feedparser httpx typer rich pydantic python-dateutil
+```
+
+### 2) Add a quick script `scripts/gn_player_by_date.py`
+
+```python
+from datetime import datetime
+from pygooglenews import GoogleNews
+from dateutil import tz
+import json, sys
+
+player = sys.argv[1]              # e.g., "LeBron James"
+start  = sys.argv[2]              # YYYY-MM-DD
+end    = sys.argv[3]              # YYYY-MM-DD
+
+# Configure Google News (English, US)
+ng = GoogleNews(lang='en', country='US')
+res = ng.search(f'"{player}"', from_=start, to_=end)
+
+out = []
+for e in res.get('entries', []):
+    published = getattr(e, 'published', None)
+    out.append({
+        'title': getattr(e, 'title', None),
+        'url': getattr(e, 'link', None),
+        'published_at': published,
+        'source': getattr(e, 'source', None),
+        'summary': getattr(e, 'summary', None)
+    })
+
+print(json.dumps(out, ensure_ascii=False, indent=2))
+```
+
+Run it:
+
+```bash
+python scripts/gn_player_by_date.py "Caitlin Clark" 2025-09-01 2025-09-27 > out.json
+```
+
+### 3) Integrate into our CLI
+
+Add a new adapter `app/sources/googlenews.py` and a CLI command `cli.py gn-by-player` (snippets below).
+
+### 4) Legal & stability notes
+
+* `pygooglenews` wraps **Google News RSS**. Respect Google/News site terms. Use modest request rates.
+* For production, mix this with **official RSS feeds/APIs** and cache aggressively.
+
+---
+
+## OBJECTIVES (MUST HAVES)
+
+1. **Ingest** articles by player name & date range from multiple sources (RSS/APIs first; HTML fallback).
+2. **Normalize** to a strict JSON schema.
+3. **De‑dupe** across sources by canonical URL + content hash.
+4. **Filter** by player using entity extraction (rule‑based + optional NER), returning only items that match.
+5. **Persist** to SQLite and export to JSON/NDJSON for downstream use.
+6. **CLI** to run ad‑hoc fetches, date‑bounded backfills, and quick queries.
+7. **Tests** for parsing, normalization, de‑dupe, and date filtering.
+
+---
+
+## NON‑GOALS (FOR NOW)
+
+* No full‑text republication UI.
+* No live WebSocket feed (can add later).
+* No paywalled scraping.
+
+---
+
+## LEGAL & ETHICAL RULES
+
+* **Prefer feeds/APIs** designed for syndication (RSS/Atom, official content APIs). `pygooglenews` consumes Google News RSS; use sparingly and cache.
+* **Respect robots.txt** and site Terms. If disallowed, **do not** crawl HTML.
+* **Throttle** requests (rate‑limit, backoff, caching with ETag/Last‑Modified where available).
+* Store **headline, link, excerpt/summary, published time, image URL, byline, tags**—do not store full bodies when terms prohibit.
+
+---
+
+## FOLDER STRUCTURE
+
+```
+./
+  .cursorrules               # this file
+  pyproject.toml             # project metadata & deps (or requirements.txt)
+  README.md
+  .env.example
+  data/
+    sources.yaml             # list of RSS/API sources with league/team mappings
+    players.csv              # canonical player names + alt spellings + league/team ids
+  app/
+    __init__.py
+    config.py                # settings (env vars, timezones)
+    models.py                # pydantic models: Article, Source, Player
+    sources/
+      rss.py                 # fetch & parse RSS/Atom
+      html.py                # fallback HTML extractor (schema.org JSON‑LD, OpenGraph)
+      api_guardian.py        # example content API (documented)
+      registry.py            # source registry + routing
+    ingest/
+      fetcher.py             # HTTP client with retries, ETag/If-Modified-Since
+      parser.py              # parse raw → intermediate item
+      normalizer.py          # map to Article schema; timezone & date filters
+      dedupe.py              # URL canonicalization + hash
+      enricher.py            # NER/rules to tag teams/players; match players.csv
+    storage/
+      sqlite.py              # migrations & CRUD
+      export.py              # JSON / NDJSON exporters
+    cli.py                   # Typer/Click CLI entrypoints
+  tests/
+    test_rss.py
+    test_normalizer.py
+    test_dedupe.py
+    test_player_filter.py
+```
+
+---
+
+## DEPENDENCIES
+
+* **pygooglenews** (Google News RSS wrapper)
+* HTTP: `httpx` (async) or `requests` (sync). Prefer **httpx**.
+* Feeds: `feedparser`
+* HTML/JSON‑LD: `selectolax` or `beautifulsoup4` + `lxml`; `extruct` for JSON‑LD
+* Dates: `python-dateutil`, `pytz` (or `zoneinfo`), `pendulum` (optional)
+* CLI: `typer` + `rich`
+* Models: `pydantic`
+* DB: `sqlite3` (stdlib) or `sqlalchemy` + `alembic` (optional)
+* Tests: `pytest`
+* Optional NER: `spacy` small model (`en_core_web_sm`) — make optional
+
+---
+
+## ENV VARS (.env.example)
+
+```
+APP_ENV=dev
+APP_TZ=America/New_York
+HTTP_TIMEOUT_SECONDS=15
+HTTP_MAX_RETRIES=3
+HTTP_BACKOFF_BASE=0.5
+USER_AGENT=sports-news-scraper/0.1 (+contact:you@example.com)
+DB_URL=sqlite:///./news.db
+GUARDIAN_API_KEY=
+```
+
+---
+
+## ARTICLE SCHEMA (Pydantic)
+
+```json
+{
+  "id": "uuid",
+  "source": {
+    "id": "espn-nba-rss",
+    "name": "ESPN NBA RSS",
+    "type": "rss|api|html",
+    "homepage": "https://..."
+  },
+  "title": "string",
+  "url": "https://...",
+  "published_at": "ISO8601 (UTC)",
+  "byline": "string|null",
+  "summary": "string|null",
+  "image_url": "https://...|null",
+  "league": "nba|nfl|mlb|epl|...|unknown",
+  "teams": ["LAL", "PHI"],
+  "players": ["LeBron James"],
+  "tags": ["injury", "trade"],
+  "raw": { "source_item_hash": "sha256", "extras": {"...": "..."} }
+}
+```
+
+---
+
+## SOURCE REGISTRY (data/sources.yaml)
+
+* Each entry declares: `id`, `type` (`rss|api|html|gn`), `url` or query params, `league`, optional `team_ids`, `rate_limit`, and `parser` hint.
+* Add a **Google News virtual source** using `type: gn` and store default params (lang, country). The query string will be built per player.
+
+```yaml
+- id: gn-us
+  type: gn
+  league: multi
+  lang: en
+  country: US
+  rate_limit: { per_second: 1 }
+
+- id: espn-nba-rss
+  type: rss
+  league: nba
+  url: https://www.espn.com/espn/rss/nba/news
+  rate_limit: { per_second: 2 }
+```
+
+> For `gn` sources, the adapter will call `GoogleNews(lang, country).search(query, from_, to_)` where `query` is built from player name and optional team.
+
+---
+
+## PLAYER CANONICALIZATION (data/players.csv)
+
+Columns: `player_id,canonical_name,alt_names,league,teams`
+
+* `alt_names` is `;`‑separated (e.g., `LeBron;LeBron James;LBJ`).
+* Keep teams as current & historical codes (improves recall).
+
+---
+
+## MATCHING LOGIC (Players → Articles)
+
+1. **Rule‑based**: case‑insensitive exact match on canonical or alt names in `title` or `summary`.
+2. **Contextual**: if `teams` overlap and article mentions jersey numbers/positions, boost score.
+3. **Optional NER**: run spaCy to extract PERSON; fuzzy‑match to known players (Levenshtein <= 1).
+4. **Threshold**: emit if score ≥ 0.7 (configurable).
+
+---
+
+## DATE FILTERING
+
+* Convert source timestamps to **UTC**.
+* CLI accepts `--from` and `--to` in local tz; convert to UTC before filtering.
+* Keep items where `published_at ∈ [from,to]` inclusive.
+
+---
+
+## IMPLEMENTATION TASKS (PRIORITIZED)
+
+1. **Scaffold** project + dependencies (pyproject, venv, basic CLI).
+2. **Google News adapter** (`app/sources/googlenews.py`) using `pygooglenews` → normalize to `Article`.
+3. **HTTP client** with retries/backoff (mainly for non-GN sources); respect ETag/Last-Modified where applicable.
+4. **RSS adapter** using `feedparser` → intermediate items.
+5. **Normalizer** to Article schema (title, url, published_at, summary, image, byline). Handle missing fields.
+6. **De‑dupe** by canonical URL + `sha256(title|summary|url)`.
+7. **Player matcher** using players.csv (rule‑based) + hooks for optional spaCy.
+8. **SQLite storage** + simple query functions.
+9. **CLI commands**:
+
+   * `ingest` (all sources.yaml) with `--from/--to`.
+   * `by-player` (query DB/export NDJSON).
+   * `gn-by-player` (call GN directly without touching DB for a fast demo).
+10. **Tests** for GN parsing, normalization, de‑dupe, player filter, date ranges.
+11. **Docs** in README with examples.
+
+---
+
+## CLI SPEC (Typer)
+
+```
+# Ingest all sources within a date range
+python -m app.cli ingest --from 2025-09-01 --to 2025-09-27 --league nba
+
+# Export player‑specific items from DB to NDJSON
+python -m app.cli by-player --player "LeBron James" --from 2025-09-10 --to 2025-09-27 --out lebron.ndjson
+
+# Fast path: Google News only (no DB), great for demos
+python -m app.cli gn-by-player --player "Caitlin Clark" --from 2025-09-01 --to 2025-09-27 --json out.json
+```
+
+### `app/sources/googlenews.py` (adapter skeleton)
+
+```python
+from pygooglenews import GoogleNews
+from datetime import datetime, timezone
+from pydantic import BaseModel
+from typing import List, Dict, Any
+
+class GNConfig(BaseModel):
+    lang: str = 'en'
+    country: str = 'US'
+
+class GNAdapter:
+    def __init__(self, cfg: GNConfig):
+        self.gn = GoogleNews(lang=cfg.lang, country=cfg.country)
+
+    def search(self, query: str, start: str, end: str) -> List[Dict[str, Any]]:
+        res = self.gn.search(query, from_=start, to_=end) or {}
+        items = []
+        for e in res.get('entries', []):
+            published = getattr(e, 'published', None)
+            items.append({
+                'source': {'id': 'gn-us', 'name': 'Google News', 'type': 'api', 'homepage': 'https://news.google.com/'},
+                'title': getattr(e, 'title', None),
+                'url': getattr(e, 'link', None),
+                'published_at': published,
+                'byline': None,
+                'summary': getattr(e, 'summary', None),
+                'image_url': None,
+                'league': 'unknown',
+                'teams': [],
+                'players': [],
+                'tags': []
+            })
+        return items
+```
+
+### `app/cli.py` (command skeleton)
+
+```python
+import json
+import typer
+from app.sources.googlenews import GNAdapter, GNConfig
+
+app = typer.Typer()
+
+@app.command()
+def gn_by_player(player: str, from_: str, to: str, json_out: str = 'out.json'):
+    """Fetch articles for a player via Google News within a date range and write to JSON."""
+    adapter = GNAdapter(GNConfig())
+    q = f'"{player}"'
+    items = adapter.search(q, from_, to)
+    with open(json_out, 'w', encoding='utf-8') as f:
+        json.dump(items, f, ensure_ascii=False, indent=2)
+    typer.echo(f"Wrote {len(items)} items → {json_out}")
+
+if __name__ == "__main__":
+    app()
+```
+
+---
+
+## CODING CONVENTIONS
+
+* Type‑hint everything; `pydantic` models for I/O.
+* Pure functions in parser/normalizer; avoid global state.
+* Log with `structlog` or stdlib `logging` (JSON format ok).
+* Fail closed on terms/robots uncertainty (warn + skip).
+
+---
+
+## SOURCE‑SPECIFIC NOTES
+
+* **RSS**: prefer `link`, `title`, `summary`/`description`, `published_parsed`, `media:content` for images.
+* **HTML fallback**: extract **schema.org/Article** (JSON‑LD) first; fall back to OpenGraph; avoid brittle CSS selectors where possible.
+* **APIs**: keep adapters stateless; keys via env; respect quotas.
+
+---
+
+## ACCEPTANCE CRITERIA
+
+* Given `players.csv` contains "LeBron James", when running `by-player` for a date range with known Lakers articles, the tool outputs ≥ 90% of expected headlines (precision ≥ 0.9 on a curated test set).
+* Duplicate headlines across multiple sources are stored once with a `sources[]` list, or de‑duped with provenance recorded.
+* ETag/If‑Modified‑Since reduce bandwidth on repeated runs (visible in logs).
+* Tests pass locally and in CI.
+
+---
+
+## TEST FIXTURES
+
+* Store sample RSS XML and HTML pages under `tests/fixtures/`.
+* Golden outputs (NDJSON) for sanity checks.
+
+---
+
+## PERFORMANCE & RELIABILITY
+
+* Concurrency (if added) via async `httpx.AsyncClient` limited to 4–8 in-flight per host.
+* Exponential backoff: jittered, cap at 30s.
+* Circuit breaker per source after N consecutive failures.
+
+---
+
+## EXTENSIONS (LATER)
+
+* Team/league filters in CLI.
+* Web UI: simple dashboard to browse stored articles.
+* Webhook to push new items to your app.
+* Sentiment & topic classification; trendlines by player.
+
+---
+
+## QUICK TASK LIST FOR THE AI (Cursor)
+
+1. Create project scaffold & dependencies.
+2. Implement `app/sources/rss.py` to fetch & parse feeds with caching headers.
+3. Implement `normalizer.py` mapping feed entries to `Article`.
+4. Implement `dedupe.py` with canonical URL + sha256 hash.
+5. Implement `enricher.py` to match players from `players.csv`.
+6. Implement `sqlite.py` and `export.py`.
+7. Wire `cli.py` commands per spec; add `--player`, `--from`, `--to`, `--league`.
+8. Add tests & fixtures; ensure CI passes.
+
+---
+
+## SNIPPETS (REFERENCE IMPLEMENTATION HINTS)
+
+**Canonical URL rules (pseudocode):**
+
+```
+url = strip_utm(url)
+url = force_https(url)
+url = remove_trailing_slash(url)
+url = remove_tracking_params(url, ["utm_*", "gclid", "fbclid"])
+```
+
+**Date coercion:**
+
+```
+# parse → aware UTC
+published_at = parse_date(src_dt).astimezone(timezone.utc)
+keep = (from_utc <= published_at <= to_utc)
+```
+
+**Player match score (simplified):**
+
+```
+score = 0
+if name_in(title): score += 0.7
+elif name_in(summary): score += 0.5
+if team_overlap(article.teams, player.teams): score += 0.2
+emit if score >= 0.7
+```
+
+---
+
+## READY‑TO‑RUN CHECKLIST
+
+* [ ] Fill `data/sources.yaml` with allowed feeds/APIs for your leagues.
+* [ ] Populate `data/players.csv` with target players.
+* [ ] Set env vars; run `python -m app.cli ingest --from ... --to ...`.
+* [ ] Verify SQLite rows & export NDJSON for a sample player.
+* [ ] Run tests; ensure precision/recall acceptable on fixture set.
+
+---
+
+**Tip:** Start with 2–3 high‑signal sources per league (official league/team sites, documented APIs like Guardian). Expand once matching quality is proven.
