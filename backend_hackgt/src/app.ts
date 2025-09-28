@@ -21,6 +21,9 @@ import {
   TimeSetRequest
 } from './types';
 import { simulatedTimeService } from './services/SimulatedTimeService';
+import { pythonAPIManager } from './services/PythonAPIManager';
+import { redisService } from './services/RedisService';
+import { TradeLoggingService } from './services/TradeLoggingService';
 import mongoose from 'mongoose';
 
 // Initialize Express app
@@ -115,6 +118,34 @@ app.get('/', (req: Request, res: Response) => {
           reset_time: '/time/reset',
           time_filtered_games: '/games/time-filtered',
           future_games: '/games/future'
+        },
+        frontend_apis: {
+          demo_state: '/api/demo/state',
+          trade_logs: '/api/demo/trade-logs',
+          active_bets: '/api/demo/active-bets',
+          balance_history: '/api/demo/balance-history',
+          active_simulation: '/api/demo/active-simulation',
+          recent_trades: '/api/trades/recent',
+          simulation_history: '/api/simulations/history',
+          game_bets: '/api/bets/game/:gameId',
+          analytics: '/api/analytics',
+          bet_holdings: '/api/bets/holdings',
+          initialize_demo: '/api/demo/initialize',
+          clear_demo: '/api/demo/clear'
+        },
+        python_news_api: {
+          status: '/api/python/status',
+          start: '/api/python/start',
+          stop: '/api/python/stop',
+          test: '/api/python/test',
+          base_url: 'http://localhost:5001',
+          endpoints: {
+            health: 'http://localhost:5001/health',
+            headlines: 'http://localhost:5001/api/headlines',
+            search_player: 'http://localhost:5001/api/search/player',
+            search_nba_athletes: 'http://localhost:5001/api/search/nba-athletes',
+            search_multiple_players: 'http://localhost:5001/api/search/multiple-players'
+          }
         }
       }
     }
@@ -589,6 +620,357 @@ app.get('/games/future', handleAsync(async (req: Request, res: Response) => {
 }));
 
 // ================================
+// Frontend API Endpoints
+// ================================
+
+// Get current demo state from Redis
+app.get('/api/demo/state', handleAsync(async (req: Request, res: Response) => {
+  try {
+    await redisService.connect();
+    const demoState = await redisService.getDemoState();
+    
+    if (!demoState) {
+      res.status(404).json({ error: 'Demo state not initialized' });
+      return;
+    }
+    
+    res.json(demoState);
+  } catch (error) {
+    console.error('Error fetching demo state:', error);
+    res.status(500).json({ error: 'Failed to fetch demo state' });
+  }
+}));
+
+// Get recent trade logs from Redis
+app.get('/api/demo/trade-logs', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    await redisService.connect();
+    const tradeLogs = await redisService.getRecentTradeLogs(limit);
+    
+    res.json(tradeLogs);
+  } catch (error) {
+    console.error('Error fetching trade logs:', error);
+    res.status(500).json({ error: 'Failed to fetch trade logs' });
+  }
+}));
+
+// Get active bets from Redis
+app.get('/api/demo/active-bets', handleAsync(async (req: Request, res: Response) => {
+  try {
+    await redisService.connect();
+    const activeBetIds = await redisService.getActiveBets();
+    const activeBets = [];
+    
+    for (const betId of activeBetIds) {
+      const betDetails = await redisService.getBetData(betId);
+      if (betDetails) {
+        activeBets.push({
+          _id: betId,
+          ...betDetails
+        });
+      }
+    }
+    
+    res.json(activeBets);
+  } catch (error) {
+    console.error('Error fetching active bets:', error);
+    res.status(500).json({ error: 'Failed to fetch active bets' });
+  }
+}));
+
+// Get balance history from Redis
+app.get('/api/demo/balance-history', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 100;
+    await redisService.connect();
+    const balanceHistory = await redisService.getBalanceHistory(limit);
+    
+    res.json(balanceHistory);
+  } catch (error) {
+    console.error('Error fetching balance history:', error);
+    res.status(500).json({ error: 'Failed to fetch balance history' });
+  }
+}));
+
+// Get active simulation from Redis
+app.get('/api/demo/active-simulation', handleAsync(async (req: Request, res: Response) => {
+  try {
+    await redisService.connect();
+    const activeSimulation = await redisService.getActiveSimulation();
+    
+    if (!activeSimulation) {
+      res.status(404).json({ error: 'No active simulation' });
+      return;
+    }
+    
+    res.json(activeSimulation);
+  } catch (error) {
+    console.error('Error fetching active simulation:', error);
+    res.status(500).json({ error: 'Failed to fetch active simulation' });
+  }
+}));
+
+// Get recent trade logs from MongoDB
+app.get('/api/trades/recent', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const tradeLogs = await TradeLoggingService.getRecentTradeLogs(limit);
+    
+    res.json(tradeLogs);
+  } catch (error) {
+    console.error('Error fetching recent trades:', error);
+    res.status(500).json({ error: 'Failed to fetch recent trades' });
+  }
+}));
+
+// Get simulation history from MongoDB
+app.get('/api/simulations/history', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 20;
+    const simulations = await TradeLoggingService.getSimulationHistory(limit);
+    
+    res.json(simulations);
+  } catch (error) {
+    console.error('Error fetching simulation history:', error);
+    res.status(500).json({ error: 'Failed to fetch simulation history' });
+  }
+}));
+
+// Get bets for a specific game from MongoDB
+app.get('/api/bets/game/:gameId', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+    const bets = await TradeLoggingService.getGameBets(gameId);
+    
+    res.json(bets);
+  } catch (error) {
+    console.error('Error fetching game bets:', error);
+    res.status(500).json({ error: 'Failed to fetch game bets' });
+  }
+}));
+
+// Get analytics from MongoDB
+app.get('/api/analytics', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const analytics = await TradeLoggingService.getAnalytics();
+    
+    res.json(analytics);
+  } catch (error) {
+    console.error('Error fetching analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+}));
+
+// Get balance history from MongoDB (for longer periods)
+app.get('/api/balance/history', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default to 30 days ago
+    const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
+    
+    const balanceHistory = await TradeLoggingService.getBalanceHistory(startDate, endDate);
+    
+    res.json(balanceHistory);
+  } catch (error) {
+    console.error('Error fetching balance history:', error);
+    res.status(500).json({ error: 'Failed to fetch balance history' });
+  }
+}));
+
+// Get all bet holdings (recent bets from MongoDB) with player data
+app.get('/api/bets/holdings', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const status = req.query.status as string; // Optional filter by status
+    
+    // Check database connection
+    if (!mongoose.connection.db) {
+      res.status(503).json({ error: 'Database not connected' });
+      return;
+    }
+    
+    // Build match stage for status filter
+    const matchStage: any = {};
+    if (status) {
+      matchStage.status = status;
+    }
+    
+    // Use MongoDB aggregation to join bet data with player data
+    const pipeline = [
+      // Match bets (with optional status filter)
+      { $match: matchStage },
+      
+      // Sort by creation date (most recent first)
+      { $sort: { createdAt: -1 } },
+      
+      // Limit results
+      { $limit: limit },
+      
+      // Lookup player information
+      {
+        $lookup: {
+          from: 'players',
+          localField: 'playerId',
+          foreignField: '_id',
+          as: 'player'
+        }
+      },
+      
+      // Unwind player array (should be single player)
+      { $unwind: { path: '$player', preserveNullAndEmptyArrays: true } },
+      
+      // Project final structure with player data
+      {
+        $project: {
+          _id: 1,
+          gameId: 1,
+          playerId: 1,
+          stat: 1,
+          betType: 1,
+          threshold: 1,
+          actual: 1,
+          hit: 1,
+          betAmount: 1,
+          multiplier: 1,
+          potentialWinnings: 1,
+          actualWinnings: 1,
+          status: 1,
+          createdAt: 1,
+          resolvedAt: 1,
+          parlayId: 1,
+          simulationId: 1,
+          __v: 1,
+          // Player data
+          playerName: '$player.fullName',
+          playerHeadshot: '$player.headshotUrl',
+          playerPosition: '$player.position',
+          playerTeamId: '$player.currentTeamId'
+        }
+      }
+    ];
+    
+    // Execute aggregation
+    const enrichedBets = await mongoose.connection.db.collection('bets')
+      .aggregate(pipeline)
+      .toArray();
+    
+    res.json(enrichedBets);
+  } catch (error) {
+    console.error('Error fetching bet holdings:', error);
+    res.status(500).json({ error: 'Failed to fetch bet holdings' });
+  }
+}));
+
+// Initialize demo state (for testing)
+app.post('/api/demo/initialize', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { initialBalance = 1000 } = req.body;
+    await redisService.connect();
+    await redisService.initializeDemoState(initialBalance);
+    
+    res.json({ message: 'Demo state initialized', initialBalance });
+  } catch (error) {
+    console.error('Error initializing demo state:', error);
+    res.status(500).json({ error: 'Failed to initialize demo state' });
+  }
+}));
+
+// Clear all demo data (for testing)
+app.post('/api/demo/clear', handleAsync(async (req: Request, res: Response) => {
+  try {
+    await redisService.connect();
+    await redisService.clearAllDemoData();
+    
+    res.json({ message: 'Demo data cleared' });
+  } catch (error) {
+    console.error('Error clearing demo data:', error);
+    res.status(500).json({ error: 'Failed to clear demo data' });
+  }
+}));
+
+// Clear all bet holdings from MongoDB (for testing)
+app.post('/api/bets/clear', handleAsync(async (req: Request, res: Response) => {
+  try {
+    // Check database connection
+    if (!mongoose.connection.db) {
+      res.status(503).json({ error: 'Database not connected' });
+      return;
+    }
+    
+    // Get count before deletion
+    const countBefore = await mongoose.connection.db.collection('bets').countDocuments();
+    
+    // Delete all bet holdings
+    const deleteResult = await mongoose.connection.db.collection('bets').deleteMany({});
+    
+    res.json({ 
+      message: 'Bet holdings cleared from MongoDB',
+      deletedCount: deleteResult.deletedCount,
+      countBefore: countBefore
+    });
+  } catch (error) {
+    console.error('Error clearing bet holdings:', error);
+    res.status(500).json({ error: 'Failed to clear bet holdings' });
+  }
+}));
+
+// ================================
+// Python API Management Endpoints
+// ================================
+
+// Get Python API status
+app.get('/api/python/status', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const status = await pythonAPIManager.getPythonAPIStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting Python API status:', error);
+    res.status(500).json({ error: 'Failed to get Python API status' });
+  }
+}));
+
+// Start Python API
+app.post('/api/python/start', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const success = await pythonAPIManager.startPythonAPI();
+    if (success) {
+      res.json({ message: 'Python API started successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to start Python API' });
+    }
+  } catch (error) {
+    console.error('Error starting Python API:', error);
+    res.status(500).json({ error: 'Failed to start Python API' });
+  }
+}));
+
+// Stop Python API
+app.post('/api/python/stop', handleAsync(async (req: Request, res: Response) => {
+  try {
+    pythonAPIManager.stopPythonAPI();
+    res.json({ message: 'Python API stop requested' });
+  } catch (error) {
+    console.error('Error stopping Python API:', error);
+    res.status(500).json({ error: 'Failed to stop Python API' });
+  }
+}));
+
+// Test Python API
+app.get('/api/python/test', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const success = await pythonAPIManager.testPythonAPI();
+    if (success) {
+      res.json({ message: 'Python API test successful' });
+    } else {
+      res.status(500).json({ error: 'Python API test failed' });
+    }
+  } catch (error) {
+    console.error('Error testing Python API:', error);
+    res.status(500).json({ error: 'Failed to test Python API' });
+  }
+}));
+
+// ================================
 // Error Handling Middleware
 // ================================
 
@@ -624,15 +1006,29 @@ const startServer = async () => {
     await bettingSimulator.loadAllThresholds();
     console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} player expected values`);
     
+    // Start Python API server
+    console.log('🐍 Starting Python News API server...');
+    const pythonAPIStarted = await pythonAPIManager.startPythonAPI();
+    if (pythonAPIStarted) {
+      console.log('✅ Python News API started successfully');
+    } else {
+      console.log('⚠️  Python News API failed to start - continuing without it');
+    }
+    
     // Start server
     const server = app.listen(config.port, () => {
       console.log(`✅ Server running on port ${config.port}`);
       console.log(`📚 API Documentation: http://localhost:${config.port}/`);
+      console.log(`🐍 Python News API: http://localhost:5001/`);
     });
     
     // Graceful shutdown
     const gracefulShutdown = async () => {
       console.log('\n🛑 Shutting down gracefully...');
+      
+      // Stop Python API
+      pythonAPIManager.stopPythonAPI();
+      
       server.close(async () => {
         await disconnectFromDatabase();
         process.exit(0);
