@@ -89,7 +89,6 @@ export interface Bet {
   gameId: string;                  // Reference to games collection
   playerId: string;                // Reference to players collection
   stat: 'points' | 'rebounds' | 'assists';
-  betType: 'flex' | 'power';
   threshold: number;               // Expected value/line
   actual?: number;                 // Actual performance (filled after game)
   hit?: boolean;                   // Whether bet won (filled after game)

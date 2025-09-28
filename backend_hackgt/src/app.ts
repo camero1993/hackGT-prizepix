@@ -216,7 +216,6 @@ app.get('/debug/players', async (req, res) => {
 app.get('/debug/star-loading', async (req, res) => {
   try {
     const playerThresholds = bettingSimulator.getPlayerThresholds();
-    const starPlayerIds = ['019392', '203999', '1628369', '2544', '203952'];
     
     // Test query for one player - get more games to find valid data
     const testQuery = await mongoose.connection.db?.collection('playerGameStats')
