@@ -7,6 +7,7 @@ interface NewsSnippetProps {
   publishedAt: string;
   sentiment?: 'positive' | 'negative' | 'neutral';
   playerName?: string;
+  url?: string;
   className?: string;
 }
 
@@ -17,6 +18,7 @@ export function NewsSnippet({
   publishedAt,
   sentiment = 'neutral',
   playerName,
+  url,
   className = ''
 }: NewsSnippetProps) {
   const getSentimentColor = (sentiment: string) => {
@@ -47,7 +49,7 @@ export function NewsSnippet({
   };
 
   return (
-    <div className={`rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:shadow-md ${getSentimentColor(sentiment)} ${className}`}>
+    <div className={`rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:shadow-md ${getSentimentColor(sentiment)} ${className} max-w-full overflow-hidden`}>
       {/* Header with source and timestamp */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -66,12 +68,12 @@ export function NewsSnippet({
       </div>
 
       {/* Title */}
-      <h3 className="mb-2 text-sm font-semibold text-card-foreground line-clamp-2">
+      <h3 className="mb-2 text-sm font-semibold text-card-foreground line-clamp-2 break-words overflow-hidden">
         {title}
       </h3>
 
       {/* Content */}
-      <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
+      <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed break-words overflow-hidden">
         {content}
       </p>
 
@@ -89,9 +91,20 @@ export function NewsSnippet({
         </div>
         
         {/* Read more indicator */}
-        <button className="text-xs text-primary hover:text-primary/80 transition-colors">
-          Read more →
-        </button>
+        {url ? (
+          <a 
+            href={url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-xs text-primary hover:text-primary/80 transition-colors"
+          >
+            Read more →
+          </a>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            Read more →
+          </span>
+        )}
       </div>
     </div>
   );
@@ -105,7 +118,7 @@ interface NewsSnippetsContainerProps {
 
 export function NewsSnippetsContainer({ children, className = '' }: NewsSnippetsContainerProps) {
   return (
-    <div className={`space-y-4 ${className}`}>
+    <div className={`space-y-4 w-full max-w-full overflow-hidden ${className}`}>
       {children}
     </div>
   );

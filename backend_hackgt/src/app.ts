@@ -109,7 +109,7 @@ app.get('/', (req: Request, res: Response) => {
     data: {
       version: '1.0.0',
       endpoints: {
-        players: '/players',
+        players: '/players (filtered to 10 star players only)',
         teams: '/teams',
         games: '/games',
         simulate: '/simulate',
@@ -212,16 +212,20 @@ app.get('/debug/players', async (req, res) => {
   }
 });
 
-// Debug endpoint to test star player loading
-app.get('/debug/star-loading', async (req, res) => {
+// Debug endpoint to test player loading
+app.get('/debug/player-loading', async (req, res) => {
   try {
     const playerThresholds = bettingSimulator.getPlayerThresholds();
-    const starPlayerIds = ['019392', '203999', '1628369', '2544', '203952'];
+    const loadedPlayerIds = Object.keys(playerThresholds);
+    
+    // Get total active players count
+    const totalActivePlayers = await mongoose.connection.db?.collection('players')
+      .countDocuments({ active: true });
     
     // Test query for one player - get more games to find valid data
     const testQuery = await mongoose.connection.db?.collection('playerGameStats')
       .find({ 
-        playerId: '201939',
+        playerId: '201939', // Stephen Curry
         season: '2024-25',
         gameDateUTC: { 
           $gte: new Date('2024-10-01'),
@@ -238,7 +242,9 @@ app.get('/debug/star-loading', async (req, res) => {
     );
     
     res.json({
-      loadedPlayers: Object.keys(playerThresholds).length,
+      loadedPlayers: loadedPlayerIds.length,
+      totalActivePlayers: totalActivePlayers || 0,
+      coveragePercentage: totalActivePlayers ? ((loadedPlayerIds.length / totalActivePlayers) * 100).toFixed(1) : '0',
       playerThresholds: playerThresholds,
       testQuery: (testQuery || []).slice(0, 5), // Show first 5 for brevity
       testQueryCount: (testQuery || []).length,
@@ -250,7 +256,7 @@ app.get('/debug/star-loading', async (req, res) => {
   }
 });
 
-// Get players endpoint
+// Get players endpoint - now uses loaded player data
 app.get('/players', handleAsync(async (req: Request, res: Response) => {
   try {
     // Validate query parameters
@@ -263,10 +269,7 @@ app.get('/players', handleAsync(async (req: Request, res: Response) => {
       return;
     }
 
-    const { active_only, limit } = queryValidation.data;
-    
-    // Build query
-    const query = active_only ? { active: true } : {};
+    const { search, active_only, limit } = queryValidation.data;
     
     // Check database connection
     if (!mongoose.connection.db) {
@@ -274,7 +277,38 @@ app.get('/players', handleAsync(async (req: Request, res: Response) => {
       return;
     }
     
-    // Fetch players
+    // Define the 10 star players with betting data
+    const STAR_PLAYER_IDS = [
+      '1628983', // Shai Gilgeous-Alexander
+      '1630169', // Tyrese Haliburton
+      '203999', // Nikola Jokić
+      '1628369', // Jayson Tatum
+      '201939', // Stephen Curry
+      '1628378', // Donovan Mitchell
+      '2544', // LeBron James
+      '1626164', // Devin Booker
+      '203507', // Giannis Antetokounmpo
+      '203954' // Joel Embiid
+    ];
+    
+    // Build query for players collection - only include star players
+    let query: any = { 
+      _id: { $in: STAR_PLAYER_IDS } // Only the 10 star players
+    };
+    
+    if (active_only) {
+      query.active = true;
+    }
+    
+    // Add search filter if provided (searches within the 10 star players only)
+    // Uses "starts with" matching - search term must appear at the beginning of the name
+    if (search) {
+      // Escape special regex characters and match from the beginning of the name
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.fullName = { $regex: `^${escapedSearch}`, $options: 'i' };
+    }
+    
+    // Fetch players from database
     const players = await mongoose.connection.db.collection('players')
       .find(query, {
         projection: {
@@ -1095,10 +1129,10 @@ const startServer = async () => {
     // Connect to database
     await connectToDatabase();
     
-    // Load only star players for demo (much faster than all 656 players)
-    console.log('🔄 Loading star players for demo...');
-    await bettingSimulator.loadStarPlayers();
-    console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} star players`);
+    // Load all players with stats for comprehensive betting system
+    console.log('🔄 Loading all players with stats...');
+    await bettingSimulator.loadAllPlayers();
+    console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} players with betting data`);
     
     // Start Python API server
     console.log('🐍 Starting Python News API server...');

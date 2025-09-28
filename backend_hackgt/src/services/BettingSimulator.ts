@@ -114,7 +114,87 @@ export class BettingSimulator implements BettingSimulatorInterface {
 
 
   /**
+   * Load all players with stats for comprehensive betting system
+   */
+  async loadAllPlayers(): Promise<void> {
+    try {
+      console.log('🔄 Loading all players with stats...');
+
+      // First, get all active players from the players collection
+      const allPlayers = await mongoose.connection.db?.collection('players')
+        .find({ active: true }, { projection: { _id: 1, fullName: 1 } })
+        .toArray();
+
+      if (!allPlayers) {
+        throw new Error('Failed to fetch players from database');
+      }
+
+      console.log(`Found ${allPlayers.length} active players in database`);
+
+      // Get all player IDs
+      const allPlayerIds = allPlayers.map(p => p._id);
+
+      // Pull all player stats in a single aggregation
+      const aggregatedStats = await PlayerGameStatsModel.aggregate<{ 
+        _id: string;
+        gamesAnalyzed: number;
+        avgPoints: number;
+        avgRebounds: number;
+        avgAssists: number;
+      }>([
+        {
+          $match: {
+            season: '2024-25',
+            playerId: { $in: allPlayerIds }
+          }
+        },
+        {
+          // Filter out placeholder games with no recorded stats
+          $match: {
+            $expr: {
+              $gt: [
+                { $add: ['$points', '$rebounds', '$assists'] },
+                0
+              ]
+            }
+          }
+        },
+        {
+          $group: {
+            _id: '$playerId',
+            gamesAnalyzed: { $sum: 1 },
+            avgPoints: { $avg: '$points' },
+            avgRebounds: { $avg: '$rebounds' },
+            avgAssists: { $avg: '$assists' }
+          }
+        },
+        {
+          $match: {
+            gamesAnalyzed: { $gte: MIN_VALID_GAMES }
+          }
+        }
+      ]);
+
+      this.playerThresholds = aggregatedStats.reduce<PlayerThresholds>((acc, statLine) => {
+        acc[statLine._id] = {
+          points: Math.round(statLine.avgPoints * 10) / 10,
+          rebounds: Math.round(statLine.avgRebounds * 10) / 10,
+          assists: Math.round(statLine.avgAssists * 10) / 10
+        };
+        return acc;
+      }, {});
+
+      console.log(`✅ Loaded expected values for ${Object.keys(this.playerThresholds).length} players with sufficient game data`);
+      console.log(`📊 Players with stats: ${Object.keys(this.playerThresholds).length}/${allPlayers.length} (${((Object.keys(this.playerThresholds).length / allPlayers.length) * 100).toFixed(1)}%)`);
+    } catch (error) {
+      console.error('Error loading all players:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Load only star players for demo purposes (much faster startup)
+   * @deprecated Use loadAllPlayers() for full functionality
    */
   async loadStarPlayers(): Promise<void> {
     try {
@@ -186,8 +266,8 @@ export class BettingSimulator implements BettingSimulatorInterface {
     games_analyzed: number;
   } | { error: string }> {
     try {
-      // Ensure star players are loaded
-      await this.ensureStarPlayersLoaded();
+      // Ensure players are loaded
+      await this.ensurePlayersLoaded();
 
       const playerExpectedValues = this.playerThresholds[playerId];
       if (!playerExpectedValues) {
@@ -243,8 +323,8 @@ export class BettingSimulator implements BettingSimulatorInterface {
         description: `Started simulation with ${contractLength} games`
       });
       
-      // Ensure star players are loaded
-      await this.ensureStarPlayersLoaded();
+      // Ensure players are loaded
+      await this.ensurePlayersLoaded();
 
       // Get recent games for simulation
       const games = await this.getRecentGames(contractLength);
@@ -585,12 +665,12 @@ export class BettingSimulator implements BettingSimulatorInterface {
   }
 
   /**
-   * Ensure star players are loaded
+   * Ensure players are loaded
    */
-  private async ensureStarPlayersLoaded(): Promise<void> {
+  private async ensurePlayersLoaded(): Promise<void> {
     if (Object.keys(this.playerThresholds).length === 0) {
-      console.log('⚠️ No player thresholds loaded. Loading star players...');
-      await this.loadStarPlayers();
+      console.log('⚠️ No player thresholds loaded. Loading all players...');
+      await this.loadAllPlayers();
     }
   }
 
