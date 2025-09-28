@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { config, connectToDatabase, disconnectFromDatabase, checkDatabaseHealth } from './config';
 import { BettingSimulator } from './services/BettingSimulator';
+import { TradeLoggingService } from './services/TradeLoggingService';
+import { redisService } from './services/RedisService';
 import {
   PlayerResponse,
   TeamResponse,
@@ -18,7 +20,11 @@ import {
   GameQuerySchema,
   TimeState,
   TimeAdvanceRequest,
-  TimeSetRequest
+  TimeSetRequest,
+  TradeLog,
+  Simulation,
+  Bet,
+  Parlay
 } from './types';
 import { simulatedTimeService } from './services/SimulatedTimeService';
 import { pythonAPIManager } from './services/PythonAPIManager';
@@ -132,6 +138,7 @@ app.get('/', (req: Request, res: Response) => {
           bet_holdings: '/api/bets/holdings',
           initialize_demo: '/api/demo/initialize',
           clear_demo: '/api/demo/clear'
+
         },
         python_news_api: {
           status: '/api/python/status',
@@ -146,6 +153,8 @@ app.get('/', (req: Request, res: Response) => {
             search_nba_athletes: 'http://localhost:5001/api/search/nba-athletes',
             search_multiple_players: 'http://localhost:5001/api/search/multiple-players'
           }
+
+
         }
       }
     }
@@ -172,6 +181,76 @@ app.get('/health', handleAsync(async (req: Request, res: Response) => {
     });
   }
 }));
+
+// Debug endpoint to check actual players and seasons
+app.get('/debug/players', async (req, res) => {
+  try {
+    // Get actual players from database
+    const players = await mongoose.connection.db?.collection('players')
+      .find({ active: true })
+      .limit(100)
+      .project({ _id: 1, fullName: 1 })
+      .toArray();
+    
+    // Get sample stats to check seasons
+    const stats = await mongoose.connection.db?.collection('playerGameStats')
+      .find({})
+      .limit(10)
+      .project({ playerId: 1, season: 1, gameDateUTC: 1 })
+      .toArray();
+    
+    // Get distinct seasons
+    const seasons = await mongoose.connection.db?.collection('playerGameStats')
+      .distinct('season');
+    
+    res.json({
+      samplePlayers: players || [],
+      sampleStats: stats || [],
+      availableSeasons: seasons || [],
+      totalPlayers: players?.length || 0
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
+// Debug endpoint to test star player loading
+app.get('/debug/star-loading', async (req, res) => {
+  try {
+    const playerThresholds = bettingSimulator.getPlayerThresholds();
+    const starPlayerIds = ['019392', '203999', '1628369', '2544', '203952'];
+    
+    // Test query for one player - get more games to find valid data
+    const testQuery = await mongoose.connection.db?.collection('playerGameStats')
+      .find({ 
+        playerId: '201939',
+        season: '2024-25',
+        gameDateUTC: { 
+          $gte: new Date('2024-10-01'),
+          $lt: new Date()
+        }
+      })
+      .sort({ gameDateUTC: -1 })
+      .limit(20)
+      .toArray();
+    
+    // Count valid games
+    const validGames = (testQuery || []).filter(stat => 
+      stat.points > 0 || stat.rebounds > 0 || stat.assists > 0
+    );
+    
+    res.json({
+      loadedPlayers: Object.keys(playerThresholds).length,
+      playerThresholds: playerThresholds,
+      testQuery: (testQuery || []).slice(0, 5), // Show first 5 for brevity
+      testQueryCount: (testQuery || []).length,
+      validGamesCount: validGames.length,
+      validGames: validGames.slice(0, 3) // Show first 3 valid games
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
 
 // Get players endpoint
 app.get('/players', handleAsync(async (req: Request, res: Response) => {
@@ -308,7 +387,7 @@ app.get('/games', handleAsync(async (req: Request, res: Response) => {
     }
     
     // Fetch games
-    const games = await mongoose.connection.db.collection('games')
+    const games = await mongoose.connection.db?.collection('games')
       .find({}, {
         projection: {
           _id: 1,
@@ -343,7 +422,7 @@ app.get('/player/:playerId/thresholds', handleAsync(async (req: Request, res: Re
     // Ensure expected values are loaded
     if (!bettingSimulator.areThresholdsLoaded()) {
       console.log('Loading player expected values...');
-      await bettingSimulator.loadAllThresholds();
+      await bettingSimulator.loadStarPlayers();
     }
     
     // Get player info
@@ -386,7 +465,7 @@ app.post('/simulate', handleAsync(async (req: Request, res: Response) => {
     // Ensure expected values are loaded
     if (!bettingSimulator.areThresholdsLoaded()) {
       console.log('Loading player expected values...');
-      await bettingSimulator.loadAllThresholds();
+      await bettingSimulator.loadStarPlayers();
     }
     
     // Run simulation
@@ -777,12 +856,15 @@ app.get('/api/balance/history', handleAsync(async (req: Request, res: Response) 
   }
 }));
 
+
 // Get all bet holdings (recent bets from MongoDB) with player data
+
 app.get('/api/bets/holdings', handleAsync(async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
     const status = req.query.status as string; // Optional filter by status
     
+
     // Check database connection
     if (!mongoose.connection.db) {
       res.status(503).json({ error: 'Database not connected' });
@@ -855,6 +937,7 @@ app.get('/api/bets/holdings', handleAsync(async (req: Request, res: Response) =>
       .toArray();
     
     res.json(enrichedBets);
+    
   } catch (error) {
     console.error('Error fetching bet holdings:', error);
     res.status(500).json({ error: 'Failed to fetch bet holdings' });
@@ -887,6 +970,7 @@ app.post('/api/demo/clear', handleAsync(async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to clear demo data' });
   }
 }));
+
 
 // Clear all bet holdings from MongoDB (for testing)
 app.post('/api/bets/clear', handleAsync(async (req: Request, res: Response) => {
@@ -973,6 +1057,16 @@ app.get('/api/python/test', handleAsync(async (req: Request, res: Response) => {
 // ================================
 // Error Handling Middleware
 // ================================
+app.get("/playerGameStats", async (req, res) => {
+  const { playerId } = req.query;
+  if (!playerId) return res.status(400).json({ error: "playerId required" });
+
+  const stats = await mongoose.connection.db?.collection('playerGameStats')
+    .find({ playerId: playerId.toString() })
+    .toArray();
+
+  res.json(stats);
+});
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Unhandled error:', err);
@@ -1001,10 +1095,10 @@ const startServer = async () => {
     // Connect to database
     await connectToDatabase();
     
-    // Load player expected values in background
-    console.log('🔄 Loading player expected values...');
-    await bettingSimulator.loadAllThresholds();
-    console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} player expected values`);
+    // Load only star players for demo (much faster than all 656 players)
+    console.log('🔄 Loading star players for demo...');
+    await bettingSimulator.loadStarPlayers();
+    console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} star players`);
     
     // Start Python API server
     console.log('🐍 Starting Python News API server...');

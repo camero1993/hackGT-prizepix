@@ -380,4 +380,15 @@ export class TradeLoggingService {
       averageReturn
     };
   }
+
+  static async getBetsByIds(betIds: string[]): Promise<Bet[]> {
+    return BetModel.find({ _id: { $in: betIds } }).lean();
+  }
+
+  static async getBalanceHistory(startDate: Date, endDate: Date): Promise<TradeLog[]> {
+    return TradeLogModel.find({
+      actionType: 'balance_updated',
+      timestamp: { $gte: startDate, $lte: endDate }
+    }).sort({ timestamp: 1 }).lean();
+  }
 }

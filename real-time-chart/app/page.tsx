@@ -3,53 +3,115 @@
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { TrendingUp, TrendingDown, Activity, DollarSign, Target, Trophy, BarChart3 } from "lucide-react"
+import { TrendingUp, TrendingDown, Activity, DollarSign, BarChart3, Trophy } from "lucide-react"
 import { BetHoldingsChart } from "@/components/bet-holdings-chart"
 import { BetPortfolio } from "@/components/bet-portfolio"
 import { SportsNavigation } from "@/components/sports-navigation"
 import { PortfolioBalanceChart } from "@/components/portfolio-balance-chart"
 
-// Mock data for sports bets treated as stock holdings
-const mockBetHoldings = [
+// Data structures matching our Redis/MongoDB format
+interface DemoState {
+  balance: number
+  totalBetsPlaced: number
+  totalWinnings: number
+  totalWagered: number
+  activeSimulationId?: string
+  lastUpdated: string
+}
+
+interface BalanceHistoryEntry {
+  timestamp: number
+  balance: number
+}
+
+interface BetHolding {
+  _id: string
+  gameId: string
+  playerId: string
+  stat: 'points' | 'rebounds' | 'assists'
+  betType: 'flex' | 'power'
+  threshold: number
+  actual?: number
+  hit?: boolean
+  betAmount: number
+  multiplier: number
+  potentialWinnings: number
+  actualWinnings?: number
+  status: 'pending' | 'won' | 'lost'
+  createdAt: string
+  resolvedAt?: string
+  parlayId?: string
+  simulationId?: string
+}
+
+// Mock data matching our backend format
+const mockBetHoldings: BetHolding[] = [
   {
-    id: "1",
-    team: "Lakers vs Warriors",
-    sport: "NBA",
-    betType: "Moneyline",
-    odds: "+150",
-    stake: 100,
-    currentValue: 125,
-    change: 25,
-    changePercent: 25,
-    status: "live" as const,
-    timeRemaining: "2Q 8:45",
+    _id: "bet_1",
+    gameId: "game_1",
+    playerId: "201939",
+    stat: "points",
+    betType: "flex",
+    threshold: 25.5,
+    actual: 28,
+    hit: true,
+    betAmount: 100,
+    multiplier: 1.5,
+    potentialWinnings: 150,
+    actualWinnings: 150,
+    status: "won",
+    createdAt: "2025-01-30T10:00:00Z",
+    resolvedAt: "2025-01-30T12:00:00Z"
   },
   {
-    id: "2",
-    team: "Chiefs vs Bills",
-    sport: "NFL",
-    betType: "Spread -3.5",
-    odds: "-110",
-    stake: 200,
-    currentValue: 180,
-    change: -20,
-    changePercent: -10,
-    status: "live" as const,
-    timeRemaining: "3Q 12:30",
+    _id: "bet_2",
+    gameId: "game_2",
+    playerId: "203999",
+    stat: "rebounds",
+    betType: "power",
+    threshold: 8.3,
+    actual: 6,
+    hit: false,
+    betAmount: 200,
+    multiplier: 2.0,
+    potentialWinnings: 400,
+    actualWinnings: 0,
+    status: "lost",
+    createdAt: "2025-01-30T11:00:00Z",
+    resolvedAt: "2025-01-30T13:00:00Z"
   },
   {
-    id: "3",
-    team: "Man City vs Arsenal",
-    sport: "EPL",
-    betType: "Over 2.5 Goals",
-    odds: "+120",
-    stake: 150,
-    currentValue: 165,
-    change: 15,
-    changePercent: 10,
-    status: "pending" as const,
-    timeRemaining: "Starts in 2h",
-  },
+    _id: "bet_3",
+    gameId: "game_3",
+    playerId: "201142",
+    stat: "assists",
+    betType: "flex",
+    threshold: 4.5,
+    actual: undefined,
+    hit: undefined,
+    betAmount: 150,
+    multiplier: 1.5,
+    potentialWinnings: 225,
+    actualWinnings: undefined,
+    status: "pending",
+    createdAt: "2025-01-30T14:00:00Z"
+  }
+]
+
+const mockDemoState: DemoState = {
+  balance: 470.00,
+  totalBetsPlaced: 3,
+  totalWinnings: -30,
+  totalWagered: 450,
+  lastUpdated: "2025-01-30T15:00:00Z"
+}
+
+const mockBalanceHistory: BalanceHistoryEntry[] = [
+  { timestamp: 1738234800000, balance: 1000 },
+  { timestamp: 1738234860000, balance: 900 },
+  { timestamp: 1738234920000, balance: 1050 },
+  { timestamp: 1738234980000, balance: 850 },
+  { timestamp: 1738235040000, balance: 470 }
 ]
 
 export default function SportsTrading() {
@@ -93,14 +155,12 @@ export default function SportsTrading() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Calculate portfolio totals
-  const totalValue = mockBetHoldings.reduce((sum, bet) => sum + bet.currentValue, 0)
-  const totalStake = mockBetHoldings.reduce((sum, bet) => sum + bet.stake, 0)
-  const totalChange = totalValue - totalStake
-  const totalChangePercent = (totalChange / totalStake) * 100
+  // Calculate portfolio totals from our data format
+  const totalValue = mockDemoState.balance
+  const totalChange = mockDemoState.totalWinnings
+  const totalChangePercent = mockDemoState.totalWagered > 0 ? (totalChange / mockDemoState.totalWagered) * 100 : 0
 
-  const liveBets = mockBetHoldings.filter((bet) => bet.status === "live").length
-  const pendingBets = mockBetHoldings.filter((bet) => bet.status === "pending").length
+  const liveBets = mockBetHoldings.filter((bet) => bet.status === "pending").length
 
   return (
     <div className="dark min-h-screen bg-background">
@@ -150,10 +210,11 @@ export default function SportsTrading() {
             totalValue={totalValue}
             totalChange={totalChange}
             totalChangePercent={totalChangePercent}
+            balanceHistory={mockBalanceHistory}
           />
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
             <Card className="bg-card border-border">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -174,32 +235,6 @@ export default function SportsTrading() {
                     <p className="text-2xl font-bold">{liveBets}</p>
                   </div>
                   <Activity className="w-8 h-8 text-green-500" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card border-border">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pending</p>
-                    <p className="text-2xl font-bold">{pendingBets}</p>
-                  </div>
-                  <Target className="w-8 h-8 text-yellow-500" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card border-border">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">P&L Today</p>
-                    <p className={`text-2xl font-bold ${totalChange >= 0 ? "text-green-500" : "text-red-500"}`}>
-                      ${totalChange.toFixed(0)}
-                    </p>
-                  </div>
-                  <Trophy className="w-8 h-8 text-primary" />
                 </div>
               </CardContent>
             </Card>

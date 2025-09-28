@@ -8,17 +8,23 @@ import { Badge } from "@/components/ui/badge"
 import { TrendingUp, TrendingDown } from "lucide-react"
 
 interface BetHolding {
-  id: string
-  team: string
-  sport: string
-  betType: string
-  odds: string
-  stake: number
-  currentValue: number
-  change: number
-  changePercent: number
-  status: "live" | "pending" | "settled"
-  timeRemaining: string
+  _id: string
+  gameId: string
+  playerId: string
+  stat: 'points' | 'rebounds' | 'assists'
+  betType: 'flex' | 'power'
+  threshold: number
+  actual?: number
+  hit?: boolean
+  betAmount: number
+  multiplier: number
+  potentialWinnings: number
+  actualWinnings?: number
+  status: 'pending' | 'won' | 'lost'
+  createdAt: string
+  resolvedAt?: string
+  parlayId?: string
+  simulationId?: string
 }
 
 interface BetHoldingsChartProps {
@@ -46,8 +52,11 @@ const generatePortfolioHistory = (currentValue: number) => {
 }
 
 export function BetHoldingsChart({ holdings }: BetHoldingsChartProps) {
-  const totalValue = holdings.reduce((sum, bet) => sum + bet.currentValue, 0)
-  const totalStake = holdings.reduce((sum, bet) => sum + bet.stake, 0)
+  const totalValue = holdings.reduce((sum, bet) => {
+    const currentValue = bet.actualWinnings || bet.betAmount
+    return sum + currentValue
+  }, 0)
+  const totalStake = holdings.reduce((sum, bet) => sum + bet.betAmount, 0)
   const totalChange = totalValue - totalStake
   const totalChangePercent = totalStake > 0 ? (totalChange / totalStake) * 100 : 0
 
