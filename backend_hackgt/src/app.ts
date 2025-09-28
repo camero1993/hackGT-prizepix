@@ -28,8 +28,6 @@ import {
 } from './types';
 import { simulatedTimeService } from './services/SimulatedTimeService';
 import { pythonAPIManager } from './services/PythonAPIManager';
-import { redisService } from './services/RedisService';
-import { TradeLoggingService } from './services/TradeLoggingService';
 import mongoose from 'mongoose';
 
 // Initialize Express app
