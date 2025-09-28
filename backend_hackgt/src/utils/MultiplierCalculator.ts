@@ -1,5 +1,5 @@
 // src/services/MultiplierCalculator.ts
-import { ParlayRequest, BetType } from '../types';
+import { ParlayRequest, BetType } from "../types";
 
 export interface MultiplierCalculationResult {
   multiplier: number;
@@ -15,20 +15,21 @@ export interface MultiplierCalculationResult {
 }
 
 export class MultiplierCalculator {
-  // Centralized config (easier to adjust later)
+  // Power Play multipliers: all must hit
   private static POWER_MULTIPLIERS: Record<number, number> = {
     2: 3.0,
     3: 6.0,
     4: 10.0,
     5: 20.0,
-    6: 37.5
+    6: 37.5,
   };
 
+  // Flex Play multipliers (supports partial wins)
   private static FLEX_MULTIPLIERS: Record<number, Record<number, number>> = {
-    3: { 3: 4.0, 2: 2.0 }, // PrizePicks official
-    4: { 4: 10.0, 3: 1.5 },
-    5: { 5: 20.0, 4: 2.0 },
-    6: { 6: 25.0, 5: 2.0 }
+    3: { 3: 4.0, 2: 2.0 },                // 3-pick flex
+    4: { 4: 10.0, 3: 1.5, 2: 0 },         // 4-pick flex
+    5: { 5: 20.0, 4: 2.0, 3: 0.4 },       // 5-pick flex
+    6: { 6: 25.0, 5: 2.0, 4: 0.4, 3: 0 }, // 6-pick flex
   };
 
   /**
@@ -40,18 +41,20 @@ export class MultiplierCalculator {
     powerHits: number,
     allHits: boolean
   ): MultiplierCalculationResult {
-    const flexBets = parlays.filter((p) => p.betType === 'flex');
-    const powerBets = parlays.filter((p) => p.betType === 'power');
+    const flexBets = parlays.filter((p) => p.betType === "flex");
+    const powerBets = parlays.filter((p) => p.betType === "power");
 
     let flexMultiplier = 0;
     let powerMultiplier = 0;
     const details: string[] = [];
 
+    // ✅ Flex payout (partial wins allowed)
     if (flexBets.length > 0) {
       flexMultiplier = this.calculateFlexMultiplier(flexBets.length, flexHits);
       details.push(`Flex: ${flexHits}/${flexBets.length} → x${flexMultiplier}`);
     }
 
+    // ✅ Power payout (all or nothing)
     if (powerBets.length > 0) {
       if (powerHits === powerBets.length && allHits) {
         powerMultiplier = this.calculatePowerMultiplier(powerBets.length);
@@ -70,8 +73,8 @@ export class MultiplierCalculator {
         powerHits,
         totalFlexBets: flexBets.length,
         totalPowerBets: powerBets.length,
-        details
-      }
+        details,
+      },
     };
   }
 
@@ -86,71 +89,14 @@ export class MultiplierCalculator {
   }
 
   /** Single bet type calc */
-  static calculateSingleTypeMultiplier(betType: BetType, totalBets: number, hits: number): number {
-    if (betType === 'flex') {
+  static calculateSingleTypeMultiplier(
+    betType: BetType,
+    totalBets: number,
+    hits: number
+  ): number {
+    if (betType === "flex") {
       return this.calculateFlexMultiplier(totalBets, hits);
     }
     return hits === totalBets ? this.calculatePowerMultiplier(totalBets) : 0;
-  }
-
-  /** EV calculator: expected return given hit probability */
-  static calculateExpectedValue(
-    betType: BetType,
-    totalBets: number,
-    hitProbability: number,
-    stake: number
-  ): number {
-    let ev = 0;
-    if (betType === 'flex') {
-      const outcomes = this.FLEX_MULTIPLIERS[totalBets];
-      if (!outcomes) return 0;
-      for (const hits in outcomes) {
-        const h = parseInt(hits);
-        const prob = this.binomialProb(totalBets, h, hitProbability);
-        ev += prob * outcomes[h] * stake;
-      }
-    } else {
-      // Power play
-      const prob = Math.pow(hitProbability, totalBets);
-      ev = prob * this.calculatePowerMultiplier(totalBets) * stake;
-    }
-    return ev;
-  }
-
-  /** Binomial probability helper */
-  private static binomialProb(n: number, k: number, p: number): number {
-    const comb = (n: number, k: number): number => {
-      if (k === 0 || k === n) return 1;
-      if (k === 1) return n;
-      return comb(n - 1, k - 1) + comb(n - 1, k);
-    };
-    return comb(n, k) * Math.pow(p, k) * Math.pow(1 - p, n - k);
-  }
-
-  /** Validate bets */
-  static validateParlayConfiguration(parlays: ParlayRequest[], betType: 'flex' | 'power') {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    if (parlays.length === 0) errors.push('At least one parlay is required');
-    if (parlays.length > 6) errors.push('Maximum 6 parlays allowed');
-
-    const flexBets = betType === 'flex' ? parlays : [];
-    const powerBets = betType === 'power' ? parlays : [];
-
-    if (flexBets.length > 0 && (flexBets.length < 3 || flexBets.length > 6)) {
-      errors.push('Flex requires 3–6 picks');
-    }
-    if (powerBets.length > 0 && (powerBets.length < 2 || powerBets.length > 6)) {
-      errors.push('Power requires 2–6 picks');
-    }
-
-    if (flexBets.length > 0 && powerBets.length > 0) {
-      warnings.push('Mixed bets: all Power legs must hit for any payout');
-    }
-    if (powerBets.length >= 5) warnings.push('High number of power bets: very risky');
-    if (flexBets.length >= 5) warnings.push('High number of flex bets: risk/reward tradeoff');
-
-    return { isValid: errors.length === 0, errors, warnings };
   }
 }
