@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Search, X, TrendingUp, TrendingDown } from "lucide-react";
 import { searchStarPlayers, Player } from "@/lib/api";
+import { calculateFiveGameAverage } from "@/lib/parlayUtils";
 
 interface BetConfiguration {
   playerId: string;
@@ -48,6 +49,7 @@ export function ContractBettingForm({ onPlaceContract, isLoading = false }: Cont
   const [searchResults, setSearchResults] = useState<Player[][]>([[], [], []]);
   const [showSearchResults, setShowSearchResults] = useState<boolean[]>([false, false, false]);
   const [isSearching, setIsSearching] = useState<boolean[]>([false, false, false]);
+  const [isThresholdLoading, setIsThresholdLoading] = useState<boolean[]>([false, false, false]);
 
   // Handle player search for a specific bet index
   const handlePlayerSearch = async (betIndex: number, query: string) => {
@@ -97,6 +99,9 @@ export function ContractBettingForm({ onPlaceContract, isLoading = false }: Cont
     };
     setBets(newBets);
 
+    // Load threshold based on 5-game average for current stat
+    void loadThresholdForBet(betIndex, player.id, newBets[betIndex].stat);
+
     // Clear search
     const newQueries = [...searchQueries];
     newQueries[betIndex] = '';
@@ -112,6 +117,35 @@ export function ContractBettingForm({ onPlaceContract, isLoading = false }: Cont
     const newBets = [...bets];
     newBets[betIndex] = { ...newBets[betIndex], [field]: value };
     setBets(newBets);
+
+    // If stat changed and player selected, refresh threshold
+    if (field === 'stat' && newBets[betIndex].playerId) {
+      void loadThresholdForBet(betIndex, newBets[betIndex].playerId, value);
+    }
+  };
+
+  // Load and set threshold using existing 5-game average helper
+  const loadThresholdForBet = async (
+    betIndex: number,
+    playerId: string,
+    stat: 'points' | 'rebounds' | 'assists'
+  ) => {
+    const loading = [...isThresholdLoading];
+    loading[betIndex] = true;
+    setIsThresholdLoading(loading);
+
+    try {
+      const avg = await calculateFiveGameAverage(playerId, stat);
+      const newBets = [...bets];
+      newBets[betIndex] = { ...newBets[betIndex], threshold: Number(avg.toFixed(1)) };
+      setBets(newBets);
+    } catch (e) {
+      console.error('Failed to load 5-game average:', e);
+    } finally {
+      const loadingDone = [...isThresholdLoading];
+      loadingDone[betIndex] = false;
+      setIsThresholdLoading(loadingDone);
+    }
   };
 
   // Check if form is valid
@@ -296,7 +330,11 @@ export function ContractBettingForm({ onPlaceContract, isLoading = false }: Cont
                         Threshold
                       </Label>
                       <div className="px-3 py-2 bg-muted rounded-md text-sm">
-                        {bet.threshold > 0 ? `${bet.threshold} ${bet.stat}` : 'Loading...'}
+                        {isThresholdLoading[betIndex]
+                          ? 'Loading...'
+                          : bet.threshold > 0
+                            ? `${bet.threshold} ${bet.stat}`
+                            : '—'}
                       </div>
                     </div>
                   </div>
