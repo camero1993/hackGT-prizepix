@@ -565,7 +565,7 @@ app.post('/simulate', handleAsync(async (req: Request, res: Response) => {
     const parlayConfig: StructuredParlayRequest = {
       legs: [request.parlays[0], request.parlays[1], request.parlays[2]],
       betType: request.betType,
-      betAmount: 100 // Default bet amount
+      betAmount: request.betAmount ?? 100 // Default bet amount
     };
 
     // Run simulation

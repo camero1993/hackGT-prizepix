@@ -306,6 +306,8 @@ export interface SimulationRequest {
   contract_length: number;
   betType: 'flex' | 'power';
   parlays: ParlayRequest[];
+  // Optional bet amount per parlay leg group; backend defaults to 100 if absent
+  betAmount?: number;
 }
 
 // ================================
@@ -332,7 +334,10 @@ export const SimulationRequestSchema = z.object({
   }),
   parlays: z.array(ParlaySchema)
     .min(1, 'At least one parlay is required')
-    .max(10, 'Maximum 10 parlays allowed')
+    .max(10, 'Maximum 10 parlays allowed'),
+  betAmount: z.number().optional().refine((v) => v === undefined || v > 0, {
+    message: 'betAmount must be a positive number'
+  })
 });
 
 export const PlayerQuerySchema = z.object({

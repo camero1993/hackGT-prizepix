@@ -42,7 +42,8 @@ export function useContractCreation(): UseContractCreationReturn {
       // Create the contract request
       const contractRequest = {
         contract_length: data.contractLength,
-        parlays: [structuredParlayRequest], // The API expects an array, but we're creating one contract
+        parlays: [structuredParlayRequest], // The API expects an array of 3 legs flattened; backend repacks
+        betAmount: data.parlayConfig.betAmount,
       };
 
       // Call the backend API to create the contract
@@ -60,26 +61,11 @@ export function useContractCreation(): UseContractCreationReturn {
       }
 
       const result = await response.json();
-      
-      // The API returns a simulation result, but we need to create a contract
-      // For now, we'll create a mock contract structure
-      // In a real implementation, you'd have a separate contract creation endpoint
-      const contract: Contract = {
-        _id: `contract_${Date.now()}`,
-        contractLength: data.contractLength,
-        parlayConfig: structuredParlayRequest,
-        totalWagered: data.parlayConfig.betAmount * data.contractLength,
-        totalWinnings: 0,
-        gamesPlayed: 0,
-        gamesWon: 0,
-        winRate: 0,
-        status: 'active',
-        createdAt: new Date(),
-        parlayIds: [],
-        remainingGames: data.contractLength,
-      };
-
-      return contract;
+      // The backend's /simulate call creates the contract, parlay, and bets
+      // in JSON storage and returns a SimulationResponse. We can optionally
+      // fetch the active simulation/contract if needed; return null to
+      // indicate success without a local mock.
+      return null;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(errorMessage);
