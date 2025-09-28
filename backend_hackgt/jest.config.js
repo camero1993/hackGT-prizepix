@@ -18,4 +18,5 @@ module.exports = {
   coverageReporters: ['text', 'lcov', 'html'],
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
   testTimeout: 10000,
+  maxWorkers: 1, // Run tests sequentially to avoid Redis interference
 };

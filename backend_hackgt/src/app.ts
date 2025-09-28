@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import { config, connectToDatabase, disconnectFromDatabase, checkDatabaseHealth } from './config';
 import { BettingSimulator } from './services/BettingSimulator';
 import { TradeLoggingService } from './services/TradeLoggingService';
-import { redisService } from './services/RedisService';
+import { jsonStorageService } from './services/JsonStorageService';
 import {
   PlayerResponse,
   TeamResponse,
@@ -24,7 +24,8 @@ import {
   TradeLog,
   Simulation,
   Bet,
-  Parlay
+  Parlay,
+  StructuredParlayRequest
 } from './types';
 import { simulatedTimeService } from './services/SimulatedTimeService';
 import { pythonAPIManager } from './services/PythonAPIManager';
@@ -456,7 +457,7 @@ app.post('/simulate', handleAsync(async (req: Request, res: Response) => {
       return;
     }
 
-    const request: SimulationRequest = validation.data;
+    const request = validation.data as SimulationRequest;
     console.log(`Starting simulation: ${request.contract_length} games, ${request.parlays.length} parlay legs`);
     
     // Ensure expected values are loaded
@@ -465,11 +466,34 @@ app.post('/simulate', handleAsync(async (req: Request, res: Response) => {
       await bettingSimulator.loadStarPlayers();
     }
     
+    // Convert parlays array to StructuredParlayRequest
+    if (request.parlays.length !== 3) {
+      res.status(400).json({
+        error: 'Exactly 3 parlay legs are required for contract simulation'
+      });
+      return;
+    }
+
+    // Validate that all parlays have required fields
+    for (const parlay of request.parlays) {
+      if (!parlay.overUnder) {
+        res.status(400).json({
+          error: 'All parlay legs must have overUnder field'
+        });
+        return;
+      }
+    }
+
+    const parlayConfig: StructuredParlayRequest = {
+      legs: [request.parlays[0], request.parlays[1], request.parlays[2]],
+      betType: request.betType,
+      betAmount: 100 // Default bet amount
+    };
+
     // Run simulation
     const result = await bettingSimulator.simulateContract(
-      request.contract_length,
-      request.parlays,
-      'flex' // or 'power', depending on your requirement
+      request.contract_length as 3 | 5,
+      parlayConfig
     );
     
     const response: SimulationResponse = result;
@@ -703,8 +727,8 @@ app.get('/games/future', handleAsync(async (req: Request, res: Response) => {
 // Get current demo state from Redis
 app.get('/api/demo/state', handleAsync(async (req: Request, res: Response) => {
   try {
-    await redisService.connect();
-    const demoState = await redisService.getDemoState();
+    await jsonStorageService.connect();
+    const demoState = await jsonStorageService.getDemoState();
     
     if (!demoState) {
       res.status(404).json({ error: 'Demo state not initialized' });
@@ -722,8 +746,8 @@ app.get('/api/demo/state', handleAsync(async (req: Request, res: Response) => {
 app.get('/api/demo/trade-logs', handleAsync(async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
-    await redisService.connect();
-    const tradeLogs = await redisService.getRecentTradeLogs(limit);
+    await jsonStorageService.connect();
+    const tradeLogs = await jsonStorageService.getRecentTradeLogs(limit);
     
     res.json(tradeLogs);
   } catch (error) {
@@ -735,12 +759,12 @@ app.get('/api/demo/trade-logs', handleAsync(async (req: Request, res: Response) 
 // Get active bets from Redis
 app.get('/api/demo/active-bets', handleAsync(async (req: Request, res: Response) => {
   try {
-    await redisService.connect();
-    const activeBetIds = await redisService.getActiveBets();
+    await jsonStorageService.connect();
+    const activeBetIds = await jsonStorageService.getActiveBets();
     const activeBets = [];
     
     for (const betId of activeBetIds) {
-      const betDetails = await redisService.getBetData(betId);
+      const betDetails = await jsonStorageService.getBetData(betId);
       if (betDetails) {
         activeBets.push({
           _id: betId,
@@ -760,8 +784,8 @@ app.get('/api/demo/active-bets', handleAsync(async (req: Request, res: Response)
 app.get('/api/demo/balance-history', handleAsync(async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 100;
-    await redisService.connect();
-    const balanceHistory = await redisService.getBalanceHistory(limit);
+    await jsonStorageService.connect();
+    const balanceHistory = await jsonStorageService.getBalanceHistory(limit);
     
     res.json(balanceHistory);
   } catch (error) {
@@ -773,8 +797,8 @@ app.get('/api/demo/balance-history', handleAsync(async (req: Request, res: Respo
 // Get active simulation from Redis
 app.get('/api/demo/active-simulation', handleAsync(async (req: Request, res: Response) => {
   try {
-    await redisService.connect();
-    const activeSimulation = await redisService.getActiveSimulation();
+    await jsonStorageService.connect();
+    const activeSimulation = await jsonStorageService.getActiveSimulation();
     
     if (!activeSimulation) {
       res.status(404).json({ error: 'No active simulation' });
@@ -811,6 +835,153 @@ app.get('/api/simulations/history', handleAsync(async (req: Request, res: Respon
   } catch (error) {
     console.error('Error fetching simulation history:', error);
     res.status(500).json({ error: 'Failed to fetch simulation history' });
+  }
+}));
+
+// ================================
+// Contract Management Endpoints
+// ================================
+
+// Get contract cash out summary
+app.get('/api/contracts/:contractId/cash-out-summary', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { contractId } = req.params;
+    const summary = await TradeLoggingService.getContractCashOutSummary(contractId);
+    
+    if (!summary) {
+      return res.status(404).json({ error: 'Contract not found or not active' });
+    }
+    
+    return res.json(summary);
+  } catch (error) {
+    console.error('Error fetching contract cash out summary:', error);
+    return res.status(500).json({ error: 'Failed to fetch contract cash out summary' });
+  }
+}));
+
+// Cash out from a contract
+app.post('/api/contracts/:contractId/cash-out', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { contractId } = req.params;
+    const { exitReason } = req.body;
+    
+    const contract = await TradeLoggingService.cashOutContract(contractId, exitReason);
+    
+    if (!contract) {
+      return res.status(404).json({ error: 'Contract not found or not active' });
+    }
+    
+    return res.json({
+      success: true,
+      contract: contract,
+      message: `Successfully cashed out from contract. Final record: ${contract.gamesWon}/${contract.gamesPlayed} games won (${contract.winRate.toFixed(1)}% win rate). Total winnings: $${contract.totalWinnings.toFixed(2)}`
+    });
+  } catch (error) {
+    console.error('Error cashing out from contract:', error);
+    return res.status(500).json({ error: 'Failed to cash out from contract' });
+  }
+}));
+
+// Get active contracts
+app.get('/api/contracts/active', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const contracts = await TradeLoggingService.getActiveContracts();
+    res.json(contracts);
+  } catch (error) {
+    console.error('Error fetching active contracts:', error);
+    res.status(500).json({ error: 'Failed to fetch active contracts' });
+  }
+}));
+
+// Get contract by ID
+app.get('/api/contracts/:contractId', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { contractId } = req.params;
+    const contract = await TradeLoggingService.getContract(contractId);
+    
+    if (!contract) {
+      return res.status(404).json({ error: 'Contract not found' });
+    }
+    
+    return res.json(contract);
+  } catch (error) {
+    console.error('Error fetching contract:', error);
+    return res.status(500).json({ error: 'Failed to fetch contract' });
+  }
+}));
+
+// Get contract Redis state
+app.get('/api/contracts/:contractId/redis', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { contractId } = req.params;
+    const contractData = await jsonStorageService.getContractData(contractId);
+    
+    if (!contractData || Object.keys(contractData).length === 0) {
+      return res.status(404).json({ error: 'Contract not found in Redis' });
+    }
+    
+    return res.json(contractData);
+  } catch (error) {
+    console.error('Error fetching contract Redis state:', error);
+    return res.status(500).json({ error: 'Failed to fetch contract Redis state' });
+  }
+}));
+
+// Get contract parlays from Redis
+app.get('/api/contracts/:contractId/parlays', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { contractId } = req.params;
+    const parlayIds = await jsonStorageService.getContractParlays(contractId);
+    
+    const parlays = [];
+    for (const parlayId of parlayIds) {
+      const parlayData = await jsonStorageService.getParlayData(parlayId);
+      if (parlayData) {
+        parlays.push(parlayData);
+      }
+    }
+    
+    res.json(parlays);
+  } catch (error) {
+    console.error('Error fetching contract parlays:', error);
+    res.status(500).json({ error: 'Failed to fetch contract parlays' });
+  }
+}));
+
+// Get active parlays
+app.get('/api/parlays/active', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const parlayIds = await jsonStorageService.getActiveParlays();
+    
+    const parlays = [];
+    for (const parlayId of parlayIds) {
+      const parlayData = await jsonStorageService.getParlayData(parlayId);
+      if (parlayData) {
+        parlays.push(parlayData);
+      }
+    }
+    
+    return res.json(parlays);
+  } catch (error) {
+    console.error('Error fetching active parlays:', error);
+    return res.status(500).json({ error: 'Failed to fetch active parlays' });
+  }
+}));
+
+// Get parlay by ID from Redis
+app.get('/api/parlays/:parlayId', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { parlayId } = req.params;
+    const parlayData = await jsonStorageService.getParlayData(parlayId);
+    
+    if (!parlayData || Object.keys(parlayData).length === 0) {
+      return res.status(404).json({ error: 'Parlay not found in Redis' });
+    }
+    
+    return res.json(parlayData);
+  } catch (error) {
+    console.error('Error fetching parlay:', error);
+    return res.status(500).json({ error: 'Failed to fetch parlay' });
   }
 }));
 
@@ -908,6 +1079,7 @@ app.get('/api/bets/holdings', handleAsync(async (req: Request, res: Response) =>
           stat: 1,
           betType: 1,
           threshold: 1,
+          overUnder: 1,
           actual: 1,
           hit: 1,
           betAmount: 1,
@@ -946,8 +1118,8 @@ app.get('/api/bets/holdings', handleAsync(async (req: Request, res: Response) =>
 app.post('/api/demo/initialize', handleAsync(async (req: Request, res: Response) => {
   try {
     const { initialBalance = 1000 } = req.body;
-    await redisService.connect();
-    await redisService.initializeDemoState(initialBalance);
+    await jsonStorageService.connect();
+    await jsonStorageService.initializeDemoState(initialBalance);
     
     res.json({ message: 'Demo state initialized', initialBalance });
   } catch (error) {
@@ -959,8 +1131,8 @@ app.post('/api/demo/initialize', handleAsync(async (req: Request, res: Response)
 // Clear all demo data (for testing)
 app.post('/api/demo/clear', handleAsync(async (req: Request, res: Response) => {
   try {
-    await redisService.connect();
-    await redisService.clearAllDemoData();
+    await jsonStorageService.connect();
+    await jsonStorageService.clearAllDemoData();
     
     res.json({ message: 'Demo data cleared' });
   } catch (error) {

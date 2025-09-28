@@ -55,7 +55,7 @@ export interface PlayerStats {
 export interface TradeLog {
   _id?: string;                    // Auto-generated ObjectId
   timestamp: Date;                 // When action occurred
-  actionType: 'bet_placed' | 'bet_resolved' | 'parlay_created' | 'simulation_started' | 'simulation_ended' | 'balance_updated';
+  actionType: 'bet_placed' | 'bet_resolved' | 'parlay_created' | 'simulation_started' | 'simulation_ended' | 'balance_updated' | 'contract_created' | 'contract_updated' | 'contract_cancelled';
   gameId?: string;                 // Related game
   betId?: string;                  // Related bet
   simulationId?: string;           // Related simulation
@@ -67,6 +67,25 @@ export interface TradeLog {
     winnings?: number;             // Winnings (for bet_resolved)
     metadata?: Record<string, any>; // Additional context
   };
+}
+
+export interface Contract {
+  _id: string;                     // Unique contract ID
+  contractLength: 3 | 5;           // Number of games in contract (3 or 5)
+  parlayConfig: StructuredParlayRequest; // Structured parlay configuration to repeat
+  totalWagered: number;            // Total amount wagered across all games
+  totalWinnings: number;           // Total winnings across all games
+  gamesPlayed: number;             // Games actually played
+  gamesWon: number;                // Games won
+  winRate: number;                 // Win rate percentage
+  status: 'active' | 'completed' | 'cancelled' | 'exited';
+  createdAt: Date;                 // When contract was created
+  completedAt?: Date;              // When contract was completed
+  exitedAt?: Date;                 // When contract was exited early
+  exitReason?: string;             // Reason for early exit
+  simulationId?: string;           // Reference to simulation if applicable
+  parlayIds: string[];             // Array of parlay IDs created for each game
+  remainingGames: number;          // Games remaining in contract
 }
 
 export interface Simulation {
@@ -90,6 +109,7 @@ export interface Bet {
   playerId: string;                // Reference to players collection
   stat: 'points' | 'rebounds' | 'assists';
   threshold: number;               // Expected value/line
+  overUnder: 'over' | 'under';     // Whether user bet over or under the threshold
   actual?: number;                 // Actual performance (filled after game)
   hit?: boolean;                   // Whether bet won (filled after game)
   betAmount: number;               // Amount wagered
@@ -103,11 +123,11 @@ export interface Bet {
   simulationId?: string;           // Reference to simulation
 }
 
-// Database model for parlays
+// Database model for parlays - MUST contain exactly 3 bets
 export interface Parlay {
   _id: string;                     // Unique parlay ID
   gameId: string;                  // Game this parlay is for
-  betIds: string[];                // Array of bet IDs in this parlay
+  betIds: [string, string, string]; // Exactly 3 bet IDs (enforced by TypeScript)
   betType: 'flex' | 'power';       // Type of bet for this parlay
   totalBetAmount: number;          // Total amount wagered
   multiplier: number;              // Final multiplier
@@ -116,13 +136,22 @@ export interface Parlay {
   status: 'pending' | 'won' | 'lost';
   createdAt: Date;
   resolvedAt?: Date;
+  contractId?: string;             // Reference to contract (if part of one)
   simulationId?: string;           // Reference to simulation
 }
 
-// API request model for parlays (simplified)
+// API request model for parlays - MUST contain exactly 3 legs
 export interface ParlayRequest {
   playerId: string;
-  stat: string;
+  stat: 'points' | 'rebounds' | 'assists';
+  overUnder: 'over' | 'under';
+}
+
+// Structured parlay request with exactly 3 legs
+export interface StructuredParlayRequest {
+  legs: [ParlayRequest, ParlayRequest, ParlayRequest]; // Exactly 3 legs
+  betType: 'flex' | 'power';
+  betAmount: number;
 }
 
 // ================================
@@ -287,6 +316,9 @@ export const ParlaySchema = z.object({
   playerId: z.string().min(1, 'Player ID is required'),
   stat: z.enum(['points', 'rebounds', 'assists'], {
     errorMap: () => ({ message: 'Stat must be one of: points, rebounds, assists' })
+  }),
+  overUnder: z.enum(['over', 'under'], {
+    errorMap: () => ({ message: 'overUnder must be either over or under' })
   })
 });
 
@@ -361,7 +393,7 @@ export interface BettingSimulatorInterface {
     expected_values: Record<string, number>;
     games_analyzed: number;
   } | { error: string }>;
-  simulateContract(contractLength: number, parlays: ParlayRequest[], betType: 'flex' | 'power'): Promise<ContractResult>;
+  simulateContract(contractLength: 3 | 5, parlayConfig: StructuredParlayRequest): Promise<ContractResult>;
 }
 
 // ================================
@@ -406,4 +438,55 @@ export interface TimeSetRequest {
 export interface GameTimeFilter {
   pastGames: Game[];
   futureGames: Game[];
+}
+
+// ================================
+// Redis State Management Interfaces
+// ================================
+
+export interface RedisParlayState {
+  parlayId: string;
+  gameId: string;
+  betIds: [string, string, string];
+  betType: 'flex' | 'power';
+  totalBetAmount: number;
+  multiplier: number;
+  potentialWinnings: number;
+  status: 'pending' | 'won' | 'lost';
+  contractId?: string;
+  createdAt: string;
+}
+
+export interface RedisContractState {
+  contractId: string;
+  contractLength: 3 | 5;
+  parlayConfig: StructuredParlayRequest;
+  totalWagered: number;
+  totalWinnings: number;
+  gamesPlayed: number;
+  gamesWon: number;
+  winRate: number;
+  status: 'active' | 'completed' | 'cancelled' | 'exited';
+  remainingGames: number;
+  parlayIds: string[];
+  createdAt: string;
+  completedAt?: string;
+  exitedAt?: string;
+  exitReason?: string;
+}
+
+export interface RedisBetState {
+  betId: string;
+  gameId: string;
+  playerId: string;
+  stat: 'points' | 'rebounds' | 'assists';
+  threshold: number;
+  overUnder: 'over' | 'under';
+  betAmount: number;
+  multiplier: number;
+  potentialWinnings: number;
+  status: 'pending' | 'won' | 'lost';
+  parlayId?: string;
+  contractId?: string;
+  createdAt: string;
 }

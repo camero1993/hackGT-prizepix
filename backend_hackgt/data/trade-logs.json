@@ -1,0 +1,109 @@
+[
+  {
+    "timestamp": "2025-09-28T08:08:29.149Z",
+    "action": "simulation_ended",
+    "amount": -300,
+    "balanceAfter": 700,
+    "description": "Completed contract: 0/3 games won (0.0% win rate)"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:28.480Z",
+    "action": "balance_updated",
+    "amount": -100,
+    "balanceAfter": 700,
+    "description": "Game 0042400405: Lost 3-leg parlay"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:28.149Z",
+    "action": "bet_resolved",
+    "amount": 33.333333333333336,
+    "winnings": 50,
+    "balanceAfter": 800,
+    "description": "Bet won: 6 vs 5.8 (over)"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:27.527Z",
+    "action": "bet_resolved",
+    "amount": 33.333333333333336,
+    "winnings": 0,
+    "balanceAfter": 800,
+    "description": "Bet lost: 9 vs 7.7 (under)"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:26.885Z",
+    "action": "bet_resolved",
+    "amount": 33.333333333333336,
+    "winnings": 50,
+    "balanceAfter": 800,
+    "description": "Bet won: 26 vs 23.9 (over)"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:25.610Z",
+    "action": "balance_updated",
+    "amount": -100,
+    "balanceAfter": 800,
+    "description": "Game 0042400406: Lost 3-leg parlay"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:25.294Z",
+    "action": "bet_resolved",
+    "amount": 33.333333333333336,
+    "winnings": 50,
+    "balanceAfter": 900,
+    "description": "Bet won: 8 vs 5.8 (over)"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:24.661Z",
+    "action": "bet_resolved",
+    "amount": 33.333333333333336,
+    "winnings": 0,
+    "balanceAfter": 900,
+    "description": "Bet lost: 9 vs 7.7 (under)"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:24.035Z",
+    "action": "bet_resolved",
+    "amount": 33.333333333333336,
+    "winnings": 50,
+    "balanceAfter": 900,
+    "description": "Bet won: 31 vs 23.9 (over)"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:22.782Z",
+    "action": "balance_updated",
+    "amount": -100,
+    "balanceAfter": 900,
+    "description": "Game 0042400407: Lost 3-leg parlay"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:22.457Z",
+    "action": "bet_resolved",
+    "amount": 33.333333333333336,
+    "winnings": 50,
+    "balanceAfter": 1000,
+    "description": "Bet won: 8 vs 5.8 (over)"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:21.815Z",
+    "action": "bet_resolved",
+    "amount": 33.333333333333336,
+    "winnings": 0,
+    "balanceAfter": 1000,
+    "description": "Bet lost: 8 vs 7.7 (under)"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:21.191Z",
+    "action": "bet_resolved",
+    "amount": 33.333333333333336,
+    "winnings": 50,
+    "balanceAfter": 1000,
+    "description": "Bet won: 25 vs 23.9 (over)"
+  },
+  {
+    "timestamp": "2025-09-28T08:08:19.198Z",
+    "action": "simulation_started",
+    "amount": 0,
+    "balanceAfter": 1000,
+    "description": "Started 3-game contract with 3-leg parlay"
+  }
+]

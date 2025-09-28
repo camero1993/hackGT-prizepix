@@ -1,0 +1,21 @@
+[
+  {
+    "contractId": "contract_1759046898863",
+    "contractLength": 3,
+    "parlayConfig": "{\"legs\":[{\"playerId\":\"201939\",\"stat\":\"points\",\"overUnder\":\"over\"},{\"playerId\":\"2544\",\"stat\":\"rebounds\",\"overUnder\":\"under\"},{\"playerId\":\"201939\",\"stat\":\"assists\",\"overUnder\":\"over\"}],\"betType\":\"power\",\"betAmount\":100}",
+    "totalWagered": 300,
+    "totalWinnings": -300,
+    "gamesPlayed": 3,
+    "gamesWon": 0,
+    "winRate": 0,
+    "status": "completed",
+    "remainingGames": 0,
+    "parlayIds": [
+      "parlay_1759046900236_0042400407",
+      "parlay_1759046903097_0042400406",
+      "parlay_1759046905931_0042400405"
+    ],
+    "createdAt": "2025-09-28T08:08:19.196Z",
+    "completedAt": "2025-09-28T08:08:29.148Z"
+  }
+]

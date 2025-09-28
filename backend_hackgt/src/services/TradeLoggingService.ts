@@ -1,5 +1,5 @@
 import mongoose, { Document } from 'mongoose';
-import { TradeLog, Simulation, Bet, Parlay, ParlayRequest } from '../types';
+import { TradeLog, Simulation, Bet, Parlay, ParlayRequest, Contract, StructuredParlayRequest, RedisParlayState, RedisContractState, RedisBetState } from '../types';
 
 // MongoDB Schemas (re-exported from BettingSimulator for organization)
 const TradeLogSchema = new mongoose.Schema({
@@ -7,7 +7,7 @@ const TradeLogSchema = new mongoose.Schema({
   actionType: { 
     type: String, 
     required: true, 
-    enum: ['bet_placed', 'bet_resolved', 'simulation_started', 'simulation_ended', 'balance_updated'],
+    enum: ['bet_placed', 'bet_resolved', 'simulation_started', 'simulation_ended', 'balance_updated', 'parlay_created', 'contract_created', 'contract_updated', 'contract_cancelled'],
     index: true 
   },
   gameId: { type: String, index: true },
@@ -74,7 +74,16 @@ const BetSchema = new mongoose.Schema({
 const ParlaySchema = new mongoose.Schema({
   _id: { type: String, required: true },
   gameId: { type: String, required: true, index: true },
-  betIds: [{ type: String, required: true }],
+  betIds: { 
+    type: [String], 
+    required: true, 
+    validate: {
+      validator: function(v: string[]) {
+        return v.length === 3;
+      },
+      message: 'Parlay must contain exactly 3 bets'
+    }
+  },
   betType: { 
     type: String, 
     required: true, 
@@ -92,7 +101,44 @@ const ParlaySchema = new mongoose.Schema({
   },
   createdAt: { type: Date, required: true, index: true },
   resolvedAt: Date,
+  contractId: { type: String, index: true },
   simulationId: { type: String, index: true }
+}, { _id: false });
+
+const ContractSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  contractLength: { 
+    type: Number, 
+    required: true, 
+    enum: [3, 5] 
+  },
+  parlayConfig: {
+    legs: [{
+      playerId: { type: String, required: true },
+      stat: { type: String, required: true, enum: ['points', 'rebounds', 'assists'] },
+      overUnder: { type: String, required: true, enum: ['over', 'under'] }
+    }],
+    betType: { type: String, required: true, enum: ['flex', 'power'] },
+    betAmount: { type: Number, required: true }
+  },
+  totalWagered: { type: Number, required: true },
+  totalWinnings: { type: Number, required: true },
+  gamesPlayed: { type: Number, required: true },
+  gamesWon: { type: Number, required: true },
+  winRate: { type: Number, required: true },
+  status: { 
+    type: String, 
+    required: true, 
+    enum: ['active', 'completed', 'cancelled', 'exited'],
+    index: true 
+  },
+  createdAt: { type: Date, required: true, index: true },
+  completedAt: Date,
+  exitedAt: Date,
+  exitReason: String,
+  simulationId: { type: String, index: true },
+  parlayIds: [{ type: String }],
+  remainingGames: { type: Number, required: true }
 }, { _id: false });
 
 // Models
@@ -100,6 +146,7 @@ const TradeLogModel = mongoose.model<TradeLog & Document>('TradeLog', TradeLogSc
 const SimulationModel = mongoose.model<Simulation & Document>('Simulation', SimulationSchema);
 const BetModel = mongoose.model<Bet & Document>('Bet', BetSchema);
 const ParlayModel = mongoose.model<Parlay & Document>('Parlay', ParlaySchema);
+const ContractModel = mongoose.model<Contract & Document>('Contract', ContractSchema);
 
 export class TradeLoggingService {
   /**
@@ -204,6 +251,7 @@ export class TradeLoggingService {
     playerId: string,
     stat: 'points' | 'rebounds' | 'assists',
     threshold: number,
+    overUnder: 'over' | 'under',
     betAmount: number,
     multiplier: number,
     simulationId?: string,
@@ -215,6 +263,7 @@ export class TradeLoggingService {
       playerId,
       stat,
       threshold,
+      overUnder,
       betAmount,
       multiplier,
       potentialWinnings: betAmount * multiplier,
@@ -301,6 +350,19 @@ export class TradeLoggingService {
     }, undefined, betId);
   }
 
+
+  /**
+   * Update a parlay
+   */
+  static async updateParlay(
+    parlayId: string,
+    updates: Partial<Parlay>
+  ): Promise<void> {
+    await ParlayModel.updateOne(
+      { _id: parlayId },
+      { $set: updates }
+    );
+  }
 
   /**
    * Resolve a parlay
@@ -412,5 +474,198 @@ export class TradeLoggingService {
       actionType: 'balance_updated',
       timestamp: { $gte: startDate, $lte: endDate }
     }).sort({ timestamp: 1 }).lean();
+  }
+
+  /**
+   * Create a new contract
+   */
+  static async createContract(
+    contractId: string,
+    contractLength: 3 | 5,
+    parlayConfig: StructuredParlayRequest,
+    simulationId?: string
+  ): Promise<Contract> {
+    const contract = await ContractModel.create({
+      _id: contractId,
+      contractLength,
+      parlayConfig,
+      totalWagered: 0,
+      totalWinnings: 0,
+      gamesPlayed: 0,
+      gamesWon: 0,
+      winRate: 0,
+      status: 'active',
+      createdAt: new Date(),
+      parlayIds: [],
+      remainingGames: contractLength,
+      simulationId
+    });
+
+    // Log contract creation
+    await this.logAction('contract_created', {
+      description: `Created ${contractLength}-game contract with ${parlayConfig.legs.length} parlay legs`,
+      amount: parlayConfig.betAmount,
+      balanceBefore: 0,
+      balanceAfter: 0,
+      metadata: { contractId, contractLength, parlayCount: parlayConfig.legs.length }
+    });
+
+    return contract;
+  }
+
+  /**
+   * Update contract with game results
+   */
+  static async updateContract(
+    contractId: string,
+    updates: Partial<Contract>
+  ): Promise<Contract | null> {
+    await ContractModel.updateOne(
+      { _id: contractId },
+      { $set: updates }
+    );
+    
+    const updatedContract = await ContractModel.findById(contractId);
+
+    // Log contract update
+    if (updatedContract) {
+      await this.logAction('contract_updated', {
+        description: `Contract ${contractId} updated: ${updatedContract.gamesWon}/${updatedContract.gamesPlayed} games won`,
+        amount: updatedContract.totalWinnings,
+        balanceBefore: 0,
+        balanceAfter: 0,
+        metadata: { 
+          contractId, 
+          gamesWon: updatedContract.gamesWon, 
+          gamesPlayed: updatedContract.gamesPlayed,
+          winRate: updatedContract.winRate 
+        }
+      });
+    }
+
+    return updatedContract;
+  }
+
+  /**
+   * Get contract by ID
+   */
+  static async getContract(contractId: string): Promise<Contract | null> {
+    return ContractModel.findById(contractId).lean();
+  }
+
+  /**
+   * Get all active contracts
+   */
+  static async getActiveContracts(): Promise<Contract[]> {
+    return ContractModel.find({ status: 'active' }).sort({ createdAt: -1 }).lean();
+  }
+
+  /**
+   * Cancel a contract
+   */
+  static async cancelContract(contractId: string): Promise<Contract | null> {
+    const contract = await ContractModel.findById(contractId);
+    if (!contract) return null;
+
+    contract.status = 'cancelled';
+    contract.completedAt = new Date();
+    await contract.save();
+
+    // Log contract cancellation
+    await this.logAction('contract_cancelled', {
+      description: `Contract ${contractId} cancelled after ${contract.gamesPlayed}/${contract.contractLength} games`,
+      amount: 0,
+      balanceBefore: 0,
+      balanceAfter: 0,
+      metadata: { contractId, gamesPlayed: contract.gamesPlayed }
+    });
+
+    return contract;
+  }
+
+  /**
+   * Cash out from a contract (early exit with current winnings/losses)
+   */
+  static async cashOutContract(
+    contractId: string, 
+    exitReason?: string
+  ): Promise<Contract | null> {
+    const contract = await ContractModel.findById(contractId);
+    if (!contract || contract.status !== 'active') {
+      return null;
+    }
+
+    // Update contract status to exited
+    contract.status = 'exited';
+    contract.exitedAt = new Date();
+    contract.exitReason = exitReason || 'User requested cash out';
+    contract.remainingGames = 0; // No more games to play
+
+    // Calculate final win rate based on games played
+    const finalWinRate = contract.gamesPlayed > 0 
+      ? (contract.gamesWon / contract.gamesPlayed) * 100 
+      : 0;
+    contract.winRate = finalWinRate;
+
+    await contract.save();
+
+    // Log contract cash out
+    await this.logAction('contract_updated', {
+      description: `Cashed out from contract ${contractId}. Final: ${contract.gamesWon}/${contract.gamesPlayed} games won (${finalWinRate.toFixed(1)}% win rate). Total winnings: $${contract.totalWinnings.toFixed(2)}`,
+      amount: contract.totalWinnings,
+      winnings: contract.totalWinnings - contract.totalWagered,
+      metadata: { 
+        contractId, 
+        gamesPlayed: contract.gamesPlayed,
+        gamesWon: contract.gamesWon,
+        winRate: finalWinRate,
+        totalWagered: contract.totalWagered,
+        totalWinnings: contract.totalWinnings,
+        exitReason: exitReason || 'User requested cash out'
+      }
+    });
+
+    return contract;
+  }
+
+  /**
+   * Get contract cash out summary (what user would get if they cash out now)
+   */
+  static async getContractCashOutSummary(contractId: string): Promise<{
+    contractId: string;
+    gamesPlayed: number;
+    gamesWon: number;
+    winRate: number;
+    totalWagered: number;
+    totalWinnings: number;
+    netProfit: number;
+    remainingGames: number;
+    potentialAdditionalWinnings: number;
+  } | null> {
+    const contract = await ContractModel.findById(contractId).lean();
+    
+    if (!contract || contract.status !== 'active') {
+      return null;
+    }
+
+    const netProfit = contract.totalWinnings - contract.totalWagered;
+    const winRate = contract.gamesPlayed > 0 
+      ? (contract.gamesWon / contract.gamesPlayed) * 100 
+      : 0;
+
+    // Calculate potential additional winnings if contract continues
+    const potentialAdditionalWinnings = contract.remainingGames * contract.parlayConfig.betAmount * 1.0; // Assuming 1.0 multiplier
+
+    return {
+      contractId: contract._id,
+      gamesPlayed: contract.gamesPlayed,
+      gamesWon: contract.gamesWon,
+      winRate,
+      totalWagered: contract.totalWagered,
+      totalWinnings: contract.totalWinnings,
+      netProfit,
+      remainingGames: contract.remainingGames,
+      potentialAdditionalWinnings
+    };
   }
 }

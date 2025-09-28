@@ -1,0 +1,369 @@
+{
+  "demoState": {
+    "balance": 1300,
+    "totalBetsPlaced": 3,
+    "totalWinnings": 300,
+    "totalWagered": 300,
+    "lastUpdated": "2025-09-28T08:32:22.323Z"
+  },
+  "activeBets": [],
+  "activeParlays": [
+    "parlay_1759048228123_0042400407",
+    "parlay_1759048293074_0042400407",
+    "parlay_1759048296183_0042400406",
+    "parlay_1759048332625_0042400407",
+    "parlay_1759048335644_0042400406",
+    "parlay_1759048338797_0042400405"
+  ],
+  "activeContracts": [
+    "contract_1759048226737",
+    "contract_1759048291640",
+    "contract_1759048331231"
+  ],
+  "bets": {},
+  "parlays": {
+    "parlay_1759048228123_0042400407": {
+      "parlayId": "parlay_1759048228123_0042400407",
+      "gameId": "0042400407",
+      "betIds": "[\"\",\"\",\"\"]",
+      "betType": "power",
+      "totalBetAmount": 100,
+      "multiplier": 0,
+      "potentialWinnings": 0,
+      "status": "pending",
+      "contractId": "contract_1759048226737",
+      "createdAt": "2025-09-28T08:30:28.443Z"
+    },
+    "parlay_1759048293074_0042400407": {
+      "parlayId": "parlay_1759048293074_0042400407",
+      "gameId": "0042400407",
+      "betIds": "[\"bet_1759048293400_201939_points\",\"bet_1759048294063_2544_rebounds\",\"bet_1759048294708_201939_assists\"]",
+      "betType": "power",
+      "totalBetAmount": 100,
+      "multiplier": 6,
+      "potentialWinnings": 600,
+      "status": "won",
+      "contractId": "contract_1759048291640",
+      "createdAt": "2025-09-28T08:31:33.399Z",
+      "resolvedAt": "2025-09-28T08:31:35.521Z"
+    },
+    "parlay_1759048296183_0042400406": {
+      "parlayId": "parlay_1759048296183_0042400406",
+      "gameId": "0042400406",
+      "betIds": "[\"\",\"\",\"\"]",
+      "betType": "power",
+      "totalBetAmount": 100,
+      "multiplier": 0,
+      "potentialWinnings": 0,
+      "status": "pending",
+      "contractId": "contract_1759048291640",
+      "createdAt": "2025-09-28T08:31:36.505Z"
+    },
+    "parlay_1759048332625_0042400407": {
+      "parlayId": "parlay_1759048332625_0042400407",
+      "gameId": "0042400407",
+      "betIds": "[\"bet_1759048332938_201939_points\",\"bet_1759048333572_2544_rebounds\",\"bet_1759048334196_201939_assists\"]",
+      "betType": "power",
+      "totalBetAmount": 100,
+      "multiplier": 0,
+      "potentialWinnings": 0,
+      "status": "lost",
+      "contractId": "contract_1759048331231",
+      "createdAt": "2025-09-28T08:32:12.937Z",
+      "resolvedAt": "2025-09-28T08:32:14.992Z"
+    },
+    "parlay_1759048335644_0042400406": {
+      "parlayId": "parlay_1759048335644_0042400406",
+      "gameId": "0042400406",
+      "betIds": "[\"bet_1759048335957_201939_points\",\"bet_1759048336617_2544_rebounds\",\"bet_1759048337353_201939_assists\"]",
+      "betType": "power",
+      "totalBetAmount": 100,
+      "multiplier": 6,
+      "potentialWinnings": 600,
+      "status": "won",
+      "contractId": "contract_1759048331231",
+      "createdAt": "2025-09-28T08:32:15.956Z",
+      "resolvedAt": "2025-09-28T08:32:18.146Z"
+    },
+    "parlay_1759048338797_0042400405": {
+      "parlayId": "parlay_1759048338797_0042400405",
+      "gameId": "0042400405",
+      "betIds": "[\"bet_1759048339124_201939_points\",\"bet_1759048339772_2544_rebounds\",\"bet_1759048340412_201939_assists\"]",
+      "betType": "power",
+      "totalBetAmount": 100,
+      "multiplier": 0,
+      "potentialWinnings": 0,
+      "status": "lost",
+      "contractId": "contract_1759048331231",
+      "createdAt": "2025-09-28T08:32:19.123Z",
+      "resolvedAt": "2025-09-28T08:32:21.211Z"
+    }
+  },
+  "contracts": {
+    "contract_1759048226737": {
+      "contractId": "contract_1759048226737",
+      "contractLength": 3,
+      "parlayConfig": "{\"legs\":[{\"playerId\":\"201939\",\"stat\":\"points\",\"overUnder\":\"over\"},{\"playerId\":\"2544\",\"stat\":\"rebounds\",\"overUnder\":\"under\"},{\"playerId\":\"201939\",\"stat\":\"assists\",\"overUnder\":\"over\"}],\"betType\":\"power\",\"betAmount\":100}",
+      "totalWagered": 0,
+      "totalWinnings": 0,
+      "gamesPlayed": 0,
+      "gamesWon": 0,
+      "winRate": 0,
+      "status": "active",
+      "remainingGames": 3,
+      "parlayIds": "[]",
+      "createdAt": "2025-09-28T08:30:27.090Z"
+    },
+    "contract_1759048291640": {
+      "contractId": "contract_1759048291640",
+      "contractLength": 3,
+      "parlayConfig": "{\"legs\":[{\"playerId\":\"201939\",\"stat\":\"points\",\"overUnder\":\"over\"},{\"playerId\":\"2544\",\"stat\":\"rebounds\",\"overUnder\":\"under\"},{\"playerId\":\"201939\",\"stat\":\"assists\",\"overUnder\":\"over\"}],\"betType\":\"power\",\"betAmount\":100}",
+      "totalWagered": 100,
+      "totalWinnings": 500,
+      "gamesPlayed": 1,
+      "gamesWon": 1,
+      "winRate": 100,
+      "status": "active",
+      "remainingGames": 2,
+      "parlayIds": "[\"parlay_1759048293074_0042400407\"]",
+      "createdAt": "2025-09-28T08:31:32.002Z"
+    },
+    "contract_1759048331231": {
+      "contractId": "contract_1759048331231",
+      "contractLength": 3,
+      "parlayConfig": "{\"legs\":[{\"playerId\":\"201939\",\"stat\":\"points\",\"overUnder\":\"over\"},{\"playerId\":\"2544\",\"stat\":\"rebounds\",\"overUnder\":\"under\"},{\"playerId\":\"201939\",\"stat\":\"assists\",\"overUnder\":\"over\"}],\"betType\":\"power\",\"betAmount\":100}",
+      "totalWagered": 300,
+      "totalWinnings": 300,
+      "gamesPlayed": 3,
+      "gamesWon": 1,
+      "winRate": 33.33333333333333,
+      "status": "completed",
+      "remainingGames": 0,
+      "parlayIds": "[\"parlay_1759048332625_0042400407\",\"parlay_1759048335644_0042400406\",\"parlay_1759048338797_0042400405\"]",
+      "createdAt": "2025-09-28T08:32:11.564Z",
+      "completedAt": "2025-09-28T08:32:22.322Z"
+    }
+  },
+  "tradeLogs": [
+    {
+      "timestamp": "2025-09-28T08:32:22.323Z",
+      "action": "simulation_ended",
+      "amount": 300,
+      "balanceAfter": 1300,
+      "description": "Completed contract: 1/3 games won (33.3% win rate)"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:21.369Z",
+      "action": "balance_updated",
+      "amount": -100,
+      "balanceAfter": 1300,
+      "description": "Game 0042400405: Lost 3-leg parlay"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:21.054Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 0,
+      "balanceAfter": 1400,
+      "description": "Bet lost: 5 vs 5.8 (over)"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:20.411Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 50,
+      "balanceAfter": 1400,
+      "description": "Bet won: 6 vs 7.7 (under)"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:19.771Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 50,
+      "balanceAfter": 1400,
+      "description": "Bet won: 25 vs 23.9 (over)"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:18.305Z",
+      "action": "balance_updated",
+      "amount": 500,
+      "balanceAfter": 1400,
+      "description": "Game 0042400406: Won 3-leg parlay"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:17.987Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 50,
+      "balanceAfter": 900,
+      "description": "Bet won: 6 vs 5.8 (over)"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:17.352Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 50,
+      "balanceAfter": 900,
+      "description": "Bet won: 7 vs 7.7 (under)"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:16.617Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 50,
+      "balanceAfter": 900,
+      "description": "Bet won: 25 vs 23.9 (over)"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:15.149Z",
+      "action": "balance_updated",
+      "amount": -100,
+      "balanceAfter": 900,
+      "description": "Game 0042400407: Lost 3-leg parlay"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:14.827Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 50,
+      "balanceAfter": 1000,
+      "description": "Bet won: 6 vs 5.8 (over)"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:14.196Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 0,
+      "balanceAfter": 1000,
+      "description": "Bet lost: 9 vs 7.7 (under)"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:13.571Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 50,
+      "balanceAfter": 1000,
+      "description": "Bet won: 31 vs 23.9 (over)"
+    },
+    {
+      "timestamp": "2025-09-28T08:32:11.566Z",
+      "action": "simulation_started",
+      "amount": 0,
+      "balanceAfter": 1000,
+      "description": "Started 3-game contract with 3-leg parlay"
+    },
+    {
+      "timestamp": "2025-09-28T08:31:35.690Z",
+      "action": "balance_updated",
+      "amount": 500,
+      "balanceAfter": 1500,
+      "description": "Game 0042400407: Won 3-leg parlay"
+    },
+    {
+      "timestamp": "2025-09-28T08:31:35.357Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 50,
+      "balanceAfter": 1000,
+      "description": "Bet won: 6 vs 5.8 (over)"
+    },
+    {
+      "timestamp": "2025-09-28T08:31:34.708Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 50,
+      "balanceAfter": 1000,
+      "description": "Bet won: 6 vs 7.7 (under)"
+    },
+    {
+      "timestamp": "2025-09-28T08:31:34.063Z",
+      "action": "bet_resolved",
+      "amount": 33.333333333333336,
+      "winnings": 50,
+      "balanceAfter": 1000,
+      "description": "Bet won: 31 vs 23.9 (over)"
+    },
+    {
+      "timestamp": "2025-09-28T08:31:32.007Z",
+      "action": "simulation_started",
+      "amount": 0,
+      "balanceAfter": 1000,
+      "description": "Started 3-game contract with 3-leg parlay"
+    },
+    {
+      "timestamp": "2025-09-28T08:30:27.093Z",
+      "action": "simulation_started",
+      "amount": 0,
+      "balanceAfter": 1000,
+      "description": "Started 3-game contract with 3-leg parlay"
+    }
+  ],
+  "balanceHistory": [
+    {
+      "timestamp": 1759048295522,
+      "balance": 1500
+    },
+    {
+      "timestamp": 1759048334993,
+      "balance": 900
+    },
+    {
+      "timestamp": 1759048338147,
+      "balance": 1400
+    },
+    {
+      "timestamp": 1759048341213,
+      "balance": 1300
+    }
+  ],
+  "indexes": {
+    "betsByGame": {
+      "0042400407": [],
+      "0042400406": [],
+      "0042400405": []
+    },
+    "betsByPlayer": {
+      "2544": [],
+      "201939": []
+    },
+    "betsByParlay": {
+      "parlay_1759048293074_0042400407": [],
+      "parlay_1759048332625_0042400407": [],
+      "parlay_1759048335644_0042400406": [],
+      "parlay_1759048338797_0042400405": []
+    },
+    "betsByContract": {
+      "contract_1759048291640": [],
+      "contract_1759048331231": []
+    },
+    "parlaysByGame": {
+      "0042400407": [
+        "parlay_1759048228123_0042400407",
+        "parlay_1759048293074_0042400407",
+        "parlay_1759048332625_0042400407"
+      ],
+      "0042400406": [
+        "parlay_1759048296183_0042400406",
+        "parlay_1759048335644_0042400406"
+      ],
+      "0042400405": [
+        "parlay_1759048338797_0042400405"
+      ]
+    },
+    "parlaysByContract": {
+      "contract_1759048226737": [
+        "parlay_1759048228123_0042400407"
+      ],
+      "contract_1759048291640": [
+        "parlay_1759048293074_0042400407",
+        "parlay_1759048296183_0042400406"
+      ],
+      "contract_1759048331231": [
+        "parlay_1759048332625_0042400407",
+        "parlay_1759048335644_0042400406",
+        "parlay_1759048338797_0042400405"
+      ]
+    },
+    "contractsByUser": {}
+  }
+}

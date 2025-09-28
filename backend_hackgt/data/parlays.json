@@ -1,0 +1,53 @@
+[
+  {
+    "parlayId": "parlay_1759046900236_0042400407",
+    "gameId": "0042400407",
+    "betIds": [
+      "bet_1759046900556_201939_points",
+      "bet_1759046901191_2544_rebounds",
+      "bet_1759046901816_201939_assists"
+    ],
+    "betType": "power",
+    "totalBetAmount": 100,
+    "multiplier": 0,
+    "potentialWinnings": 0,
+    "status": "lost",
+    "contractId": "contract_1759046898863",
+    "createdAt": "2025-09-28T08:08:20.555Z",
+    "resolvedAt": "2025-09-28T08:08:22.612Z"
+  },
+  {
+    "parlayId": "parlay_1759046903097_0042400406",
+    "gameId": "0042400406",
+    "betIds": [
+      "bet_1759046903412_201939_points",
+      "bet_1759046904035_2544_rebounds",
+      "bet_1759046904662_201939_assists"
+    ],
+    "betType": "power",
+    "totalBetAmount": 100,
+    "multiplier": 0,
+    "potentialWinnings": 0,
+    "status": "lost",
+    "contractId": "contract_1759046898863",
+    "createdAt": "2025-09-28T08:08:23.411Z",
+    "resolvedAt": "2025-09-28T08:08:25.451Z"
+  },
+  {
+    "parlayId": "parlay_1759046905931_0042400405",
+    "gameId": "0042400405",
+    "betIds": [
+      "bet_1759046906248_201939_points",
+      "bet_1759046906885_2544_rebounds",
+      "bet_1759046907527_201939_assists"
+    ],
+    "betType": "power",
+    "totalBetAmount": 100,
+    "multiplier": 0,
+    "potentialWinnings": 0,
+    "status": "lost",
+    "contractId": "contract_1759046898863",
+    "createdAt": "2025-09-28T08:08:26.246Z",
+    "resolvedAt": "2025-09-28T08:08:28.314Z"
+  }
+]

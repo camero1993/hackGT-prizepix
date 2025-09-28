@@ -202,6 +202,25 @@ export default function PlayerPage() {
         ? game.rebounds
         : game.assists,
   }));
+
+  // Calculate 5-game average for the selected stat
+  const getFiveGameAverage = () => {
+    if (playerStats.length === 0) return 0;
+    
+    const lastFiveGames = playerStats.slice(0, 5); // First 5 since they're already sorted by date
+    const total = lastFiveGames.reduce((sum, game) => {
+      const value = selectedStat === "points" 
+        ? game.points 
+        : selectedStat === "rebounds" 
+        ? game.rebounds 
+        : game.assists;
+      return sum + value;
+    }, 0);
+    
+    return lastFiveGames.length > 0 ? total / lastFiveGames.length : 0;
+  };
+
+  const fiveGameAverage = getFiveGameAverage();
   // Search for players with debouncing
   const searchPlayersDebounced = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -470,6 +489,11 @@ export default function PlayerPage() {
                 <CardDescription className="text-muted-foreground">
                   Displaying the Players Performaces according to Shooting,
                   Assists , Rebounds
+                  {fiveGameAverage > 0 && (
+                    <span className="block mt-1 text-orange-500 font-medium">
+                      5-Game Average: {fiveGameAverage.toFixed(1)} {selectedStat}
+                    </span>
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -506,8 +530,15 @@ export default function PlayerPage() {
                         formatter={(value) => [`${value}`, selectedStat]}
                       />
 
-                      {/* Reference lines (you can remove or adapt them if not needed for stats) */}
-                      
+                      {/* 5-Game Average Reference Line */}
+                      {fiveGameAverage > 0 && (
+                        <ReferenceLine
+                          y={fiveGameAverage}
+                          stroke="#6b7280"
+                          strokeDasharray="5 5"
+                          strokeWidth={2}
+                        />
+                      )}
 
                       {/* ✅ Dynamic stat line */}
                       <Line

@@ -32,13 +32,60 @@ export class MultiplierCalculator {
   };
 
   /**
-   * Calculate the payout multiplier for a parlay
-   * - Flex: partial win possible (e.g. 4/6 still pays)
-   * - Power: must hit all legs
+   * Calculate multiplier for a parlay with a single bet type
+   * @param parlayType - The bet type for the entire parlay ('flex' or 'power')
+   * @param totalBets - Total number of bets in the parlay (should be 3)
+   * @param hits - Number of bets that won
+   * @param allHits - Whether all bets won (for power parlays)
    */
   static calculateMultiplier(
-    parlays: ParlayRequest[],
-    hits: number
+    parlayType: 'flex' | 'power',
+    totalBets: number,
+    hits: number,
+    allHits: boolean
+  ): MultiplierCalculationResult {
+    let multiplier = 0;
+    const details: string[] = [];
+
+    if (parlayType === 'flex') {
+      // Flex parlay: partial wins allowed with different multipliers
+      multiplier = this.calculateFlexMultiplier(totalBets, hits);
+      details.push(`Flex Parlay: ${hits}/${totalBets} hits → x${multiplier}`);
+    } else if (parlayType === 'power') {
+      // Power parlay: ALL bets must win, otherwise 0
+      if (allHits && hits === totalBets) {
+        multiplier = this.calculatePowerMultiplier(totalBets);
+        details.push(`Power Parlay: ${hits}/${totalBets} hits → x${multiplier}`);
+      } else {
+        multiplier = 0;
+        details.push(`Power Parlay: Missed (${hits}/${totalBets} hits) → x0`);
+      }
+    }
+
+    return {
+      multiplier,
+      breakdown: {
+        flexMultiplier: parlayType === 'flex' ? multiplier : 0,
+        powerMultiplier: parlayType === 'power' ? multiplier : 0,
+        flexHits: parlayType === 'flex' ? hits : 0,
+        powerHits: parlayType === 'power' ? hits : 0,
+        totalFlexBets: parlayType === 'flex' ? totalBets : 0,
+        totalPowerBets: parlayType === 'power' ? totalBets : 0,
+        details,
+      },
+    };
+  }
+
+  /**
+   * Legacy method for mixed flex/power parlays (deprecated)
+   * @deprecated Use calculateMultiplier with single parlay type instead
+   */
+  static calculateMixedMultiplier(
+    parlays: (ParlayRequest & { betType: 'flex' | 'power' })[],
+    flexHits: number,
+    powerHits: number,
+    allHits: boolean
+>>>>>>> 2b81f80 (Migrate from Redis to JSON file storage)
   ): MultiplierCalculationResult {
     if (parlays.length === 0) {
       return {
