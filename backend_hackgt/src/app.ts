@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { config, connectToDatabase, disconnectFromDatabase, checkDatabaseHealth } from './config';
 import { BettingSimulator } from './services/BettingSimulator';
+import { TradeLoggingService } from './services/TradeLoggingService';
+import { redisService } from './services/RedisService';
 import {
   PlayerResponse,
   TeamResponse,
@@ -18,7 +20,11 @@ import {
   GameQuerySchema,
   TimeState,
   TimeAdvanceRequest,
-  TimeSetRequest
+  TimeSetRequest,
+  TradeLog,
+  Simulation,
+  Bet,
+  Parlay
 } from './types';
 import { simulatedTimeService } from './services/SimulatedTimeService';
 import mongoose from 'mongoose';
@@ -115,6 +121,20 @@ app.get('/', (req: Request, res: Response) => {
           reset_time: '/time/reset',
           time_filtered_games: '/games/time-filtered',
           future_games: '/games/future'
+        },
+        frontend_apis: {
+          demo_state: '/api/demo/state',
+          trade_logs: '/api/demo/trade-logs',
+          active_bets: '/api/demo/active-bets',
+          balance_history: '/api/demo/balance-history',
+          active_simulation: '/api/demo/active-simulation',
+          recent_trades: '/api/trades/recent',
+          simulation_history: '/api/simulations/history',
+          game_bets: '/api/bets/game/:gameId',
+          analytics: '/api/analytics',
+          bet_holdings: '/api/bets/holdings',
+          initialize_demo: '/api/demo/initialize',
+          clear_demo: '/api/demo/clear'
         }
       }
     }
@@ -141,6 +161,76 @@ app.get('/health', handleAsync(async (req: Request, res: Response) => {
     });
   }
 }));
+
+// Debug endpoint to check actual players and seasons
+app.get('/debug/players', async (req, res) => {
+  try {
+    // Get actual players from database
+    const players = await mongoose.connection.db?.collection('players')
+      .find({ active: true })
+      .limit(100)
+      .project({ _id: 1, fullName: 1 })
+      .toArray();
+    
+    // Get sample stats to check seasons
+    const stats = await mongoose.connection.db?.collection('playerGameStats')
+      .find({})
+      .limit(10)
+      .project({ playerId: 1, season: 1, gameDateUTC: 1 })
+      .toArray();
+    
+    // Get distinct seasons
+    const seasons = await mongoose.connection.db?.collection('playerGameStats')
+      .distinct('season');
+    
+    res.json({
+      samplePlayers: players || [],
+      sampleStats: stats || [],
+      availableSeasons: seasons || [],
+      totalPlayers: players?.length || 0
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
+// Debug endpoint to test star player loading
+app.get('/debug/star-loading', async (req, res) => {
+  try {
+    const playerThresholds = bettingSimulator.getPlayerThresholds();
+    const starPlayerIds = ['019392', '203999', '1628369', '2544', '203952'];
+    
+    // Test query for one player - get more games to find valid data
+    const testQuery = await mongoose.connection.db?.collection('playerGameStats')
+      .find({ 
+        playerId: '201939',
+        season: '2024-25',
+        gameDateUTC: { 
+          $gte: new Date('2024-10-01'),
+          $lt: new Date()
+        }
+      })
+      .sort({ gameDateUTC: -1 })
+      .limit(20)
+      .toArray();
+    
+    // Count valid games
+    const validGames = (testQuery || []).filter(stat => 
+      stat.points > 0 || stat.rebounds > 0 || stat.assists > 0
+    );
+    
+    res.json({
+      loadedPlayers: Object.keys(playerThresholds).length,
+      playerThresholds: playerThresholds,
+      testQuery: (testQuery || []).slice(0, 5), // Show first 5 for brevity
+      testQueryCount: (testQuery || []).length,
+      validGamesCount: validGames.length,
+      validGames: validGames.slice(0, 3) // Show first 3 valid games
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
 
 // Get players endpoint
 app.get('/players', handleAsync(async (req: Request, res: Response) => {
@@ -277,7 +367,7 @@ app.get('/games', handleAsync(async (req: Request, res: Response) => {
     }
     
     // Fetch games
-    const games = await mongoose.connection.db.collection('games')
+    const games = await mongoose.connection.db?.collection('games')
       .find({}, {
         projection: {
           _id: 1,
@@ -312,7 +402,7 @@ app.get('/player/:playerId/thresholds', handleAsync(async (req: Request, res: Re
     // Ensure expected values are loaded
     if (!bettingSimulator.areThresholdsLoaded()) {
       console.log('Loading player expected values...');
-      await bettingSimulator.loadAllThresholds();
+      await bettingSimulator.loadStarPlayers();
     }
     
     // Get player info
@@ -355,7 +445,7 @@ app.post('/simulate', handleAsync(async (req: Request, res: Response) => {
     // Ensure expected values are loaded
     if (!bettingSimulator.areThresholdsLoaded()) {
       console.log('Loading player expected values...');
-      await bettingSimulator.loadAllThresholds();
+      await bettingSimulator.loadStarPlayers();
     }
     
     // Run simulation
@@ -589,8 +679,234 @@ app.get('/games/future', handleAsync(async (req: Request, res: Response) => {
 }));
 
 // ================================
+// Frontend API Endpoints
+// ================================
+
+// Get current demo state from Redis
+app.get('/api/demo/state', handleAsync(async (req: Request, res: Response) => {
+  try {
+    await redisService.connect();
+    const demoState = await redisService.getDemoState();
+    
+    if (!demoState) {
+      res.status(404).json({ error: 'Demo state not initialized' });
+      return;
+    }
+    
+    res.json(demoState);
+  } catch (error) {
+    console.error('Error fetching demo state:', error);
+    res.status(500).json({ error: 'Failed to fetch demo state' });
+  }
+}));
+
+// Get recent trade logs from Redis
+app.get('/api/demo/trade-logs', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    await redisService.connect();
+    const tradeLogs = await redisService.getRecentTradeLogs(limit);
+    
+    res.json(tradeLogs);
+  } catch (error) {
+    console.error('Error fetching trade logs:', error);
+    res.status(500).json({ error: 'Failed to fetch trade logs' });
+  }
+}));
+
+// Get active bets from Redis
+app.get('/api/demo/active-bets', handleAsync(async (req: Request, res: Response) => {
+  try {
+    await redisService.connect();
+    const activeBetIds = await redisService.getActiveBets();
+    const activeBets = [];
+    
+    for (const betId of activeBetIds) {
+      const betDetails = await redisService.getBetData(betId);
+      if (betDetails) {
+        activeBets.push({
+          _id: betId,
+          ...betDetails
+        });
+      }
+    }
+    
+    res.json(activeBets);
+  } catch (error) {
+    console.error('Error fetching active bets:', error);
+    res.status(500).json({ error: 'Failed to fetch active bets' });
+  }
+}));
+
+// Get balance history from Redis
+app.get('/api/demo/balance-history', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 100;
+    await redisService.connect();
+    const balanceHistory = await redisService.getBalanceHistory(limit);
+    
+    res.json(balanceHistory);
+  } catch (error) {
+    console.error('Error fetching balance history:', error);
+    res.status(500).json({ error: 'Failed to fetch balance history' });
+  }
+}));
+
+// Get active simulation from Redis
+app.get('/api/demo/active-simulation', handleAsync(async (req: Request, res: Response) => {
+  try {
+    await redisService.connect();
+    const activeSimulation = await redisService.getActiveSimulation();
+    
+    if (!activeSimulation) {
+      res.status(404).json({ error: 'No active simulation' });
+      return;
+    }
+    
+    res.json(activeSimulation);
+  } catch (error) {
+    console.error('Error fetching active simulation:', error);
+    res.status(500).json({ error: 'Failed to fetch active simulation' });
+  }
+}));
+
+// Get recent trade logs from MongoDB
+app.get('/api/trades/recent', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const tradeLogs = await TradeLoggingService.getRecentTradeLogs(limit);
+    
+    res.json(tradeLogs);
+  } catch (error) {
+    console.error('Error fetching recent trades:', error);
+    res.status(500).json({ error: 'Failed to fetch recent trades' });
+  }
+}));
+
+// Get simulation history from MongoDB
+app.get('/api/simulations/history', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 20;
+    const simulations = await TradeLoggingService.getSimulationHistory(limit);
+    
+    res.json(simulations);
+  } catch (error) {
+    console.error('Error fetching simulation history:', error);
+    res.status(500).json({ error: 'Failed to fetch simulation history' });
+  }
+}));
+
+// Get bets for a specific game from MongoDB
+app.get('/api/bets/game/:gameId', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+    const bets = await TradeLoggingService.getGameBets(gameId);
+    
+    res.json(bets);
+  } catch (error) {
+    console.error('Error fetching game bets:', error);
+    res.status(500).json({ error: 'Failed to fetch game bets' });
+  }
+}));
+
+// Get analytics from MongoDB
+app.get('/api/analytics', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const analytics = await TradeLoggingService.getAnalytics();
+    
+    res.json(analytics);
+  } catch (error) {
+    console.error('Error fetching analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+}));
+
+// Get balance history from MongoDB (for longer periods)
+app.get('/api/balance/history', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default to 30 days ago
+    const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
+    
+    const balanceHistory = await TradeLoggingService.getBalanceHistory(startDate, endDate);
+    
+    res.json(balanceHistory);
+  } catch (error) {
+    console.error('Error fetching balance history:', error);
+    res.status(500).json({ error: 'Failed to fetch balance history' });
+  }
+}));
+
+// Get all bet holdings (recent bets from MongoDB)
+app.get('/api/bets/holdings', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const status = req.query.status as string; // Optional filter by status
+    
+    // Get recent trade logs to find bet IDs
+    const tradeLogs = await TradeLoggingService.getRecentTradeLogs(limit * 2);
+    const betIds = tradeLogs
+      .filter(log => log.betId)
+      .map(log => log.betId!)
+      .slice(0, limit);
+    
+    if (betIds.length === 0) {
+      res.json([]);
+      return;
+    }
+    
+    // Get bet details from MongoDB
+    const bets = await TradeLoggingService.getBetsByIds(betIds);
+    
+    // Filter by status if provided
+    const filteredBets = status ? bets.filter(bet => bet.status === status) : bets;
+    
+    res.json(filteredBets);
+  } catch (error) {
+    console.error('Error fetching bet holdings:', error);
+    res.status(500).json({ error: 'Failed to fetch bet holdings' });
+  }
+}));
+
+// Initialize demo state (for testing)
+app.post('/api/demo/initialize', handleAsync(async (req: Request, res: Response) => {
+  try {
+    const { initialBalance = 1000 } = req.body;
+    await redisService.connect();
+    await redisService.initializeDemoState(initialBalance);
+    
+    res.json({ message: 'Demo state initialized', initialBalance });
+  } catch (error) {
+    console.error('Error initializing demo state:', error);
+    res.status(500).json({ error: 'Failed to initialize demo state' });
+  }
+}));
+
+// Clear all demo data (for testing)
+app.post('/api/demo/clear', handleAsync(async (req: Request, res: Response) => {
+  try {
+    await redisService.connect();
+    await redisService.clearAllDemoData();
+    
+    res.json({ message: 'Demo data cleared' });
+  } catch (error) {
+    console.error('Error clearing demo data:', error);
+    res.status(500).json({ error: 'Failed to clear demo data' });
+  }
+}));
+
+// ================================
 // Error Handling Middleware
 // ================================
+app.get("/playerGameStats", async (req, res) => {
+  const { playerId } = req.query;
+  if (!playerId) return res.status(400).json({ error: "playerId required" });
+
+  const stats = await mongoose.connection.db?.collection('playerGameStats')
+    .find({ playerId: playerId.toString() })
+    .toArray();
+
+  res.json(stats);
+});
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Unhandled error:', err);
@@ -619,10 +935,10 @@ const startServer = async () => {
     // Connect to database
     await connectToDatabase();
     
-    // Load player expected values in background
-    console.log('🔄 Loading player expected values...');
-    await bettingSimulator.loadAllThresholds();
-    console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} player expected values`);
+    // Load only star players for demo (much faster than all 656 players)
+    console.log('🔄 Loading star players for demo...');
+    await bettingSimulator.loadStarPlayers();
+    console.log(`✅ Loaded ${Object.keys(bettingSimulator.getPlayerThresholds()).length} star players`);
     
     // Start server
     const server = app.listen(config.port, () => {

@@ -6,59 +6,64 @@ import { Button } from "@/components/ui/button"
 import { TrendingUp, TrendingDown } from "lucide-react"
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts"
 
-// Mock historical portfolio data
-const generatePortfolioData = (period: string) => {
-  const baseValue = 8033.51
-  const dataPoints =
-    period === "1D"
-      ? 24
-      : period === "1W"
-        ? 7
-        : period === "1M"
-          ? 30
-          : period === "3M"
-            ? 90
-            : period === "YTD"
-              ? 180
-              : period === "1Y"
-                ? 365
-                : 1000
+// Data structure matching our Redis balance history
+interface BalanceHistoryEntry {
+  timestamp: number
+  balance: number
+}
 
-  const data = []
-  let currentValue = baseValue - (Math.random() * 1000 + 500) // Start lower
-
-  for (let i = 0; i < dataPoints; i++) {
-    // Simulate general upward trend with volatility
-    const change = (Math.random() - 0.3) * 50 // Slight upward bias
-    currentValue += change
-
-    data.push({
-      time: i,
-      value: Math.max(currentValue, 1000), // Don't go below $1000
-    })
-  }
-
-  // Ensure we end at the current value
-  data[data.length - 1].value = baseValue
-
-  return data
+// Transform Redis balance history to chart format
+const transformBalanceHistory = (redisData: BalanceHistoryEntry[]) => {
+  return redisData.map((entry, index) => ({
+    time: index,
+    value: entry.balance,
+    timestamp: entry.timestamp
+  }))
 }
 
 interface PortfolioBalanceChartProps {
   totalValue: number
   totalChange: number
   totalChangePercent: number
+  balanceHistory?: BalanceHistoryEntry[]
 }
 
-export function PortfolioBalanceChart({ totalValue, totalChange, totalChangePercent }: PortfolioBalanceChartProps) {
+export function PortfolioBalanceChart({ totalValue, totalChange, totalChangePercent, balanceHistory = [] }: PortfolioBalanceChartProps) {
   const [selectedPeriod, setSelectedPeriod] = useState("1D")
-  const [chartData, setChartData] = useState(() => generatePortfolioData("1D"))
+  const [chartData, setChartData] = useState(() => {
+    // Use real data if available, otherwise generate mock data
+    return balanceHistory.length > 0 ? transformBalanceHistory(balanceHistory) : generateMockData("1D")
+  })
 
   const periods = ["1D", "1W", "1M", "3M", "YTD", "1Y", "ALL"]
 
+  // Generate mock data for periods not covered by Redis
+  const generateMockData = (period: string) => {
+    const dataPoints = period === "1D" ? 24 : period === "1W" ? 7 : period === "1M" ? 30 : 100
+    const data = []
+    let currentValue = totalValue - (Math.random() * 200 + 100)
+
+    for (let i = 0; i < dataPoints; i++) {
+      const change = (Math.random() - 0.3) * 20
+      currentValue += change
+      data.push({
+        time: i,
+        value: Math.max(currentValue, 100),
+      })
+    }
+    data[data.length - 1].value = totalValue
+    return data
+  }
+
   const handlePeriodChange = (period: string) => {
     setSelectedPeriod(period)
-    setChartData(generatePortfolioData(period))
+    // For short periods, use Redis data if available
+    if ((period === "1D" || period === "1W") && balanceHistory.length > 0) {
+      setChartData(transformBalanceHistory(balanceHistory))
+    } else {
+      // For longer periods, generate mock data or fetch from MongoDB
+      setChartData(generateMockData(period))
+    }
   }
 
   const isPositive = totalChange >= 0
