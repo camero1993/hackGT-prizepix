@@ -75,6 +75,8 @@ const portfolioData = [
   },
 ];
 
+const PLAYER_SELECTION_COUNT = 3;
+
 
 function PlayerSelector({
   index,
@@ -169,7 +171,9 @@ export default function PlayerPage() {
   const [showSearchResults, setShowSearchResults] = useState(false);
 
   const [contractLength, setContractLength] = useState<number>(3);
-  const [selectedPlayers, setSelectedPlayers] = useState<(Player | null)[]>([]);
+  const [selectedPlayers, setSelectedPlayers] = useState<(Player | null)[]>(
+    Array(PLAYER_SELECTION_COUNT).fill(null)
+  );
 
   interface PlayerGameStat {
     gameDateUTC: string;
@@ -179,9 +183,6 @@ export default function PlayerPage() {
   }
   const [playerStats, setPlayerStats] = useState<PlayerGameStat[]>([]);
 
-  useEffect(() => {
-    setSelectedPlayers(Array(contractLength).fill(null));
-  }, [contractLength]);
   // Default player data (Josh Allen fallback)
   const defaultPlayerData = null;
 
@@ -547,7 +548,7 @@ export default function PlayerPage() {
                   {/* Player Selection Slots */}
                   <div>
                     <label className="text-sm font-medium mb-2 block text-foreground">
-                      Pick {contractLength} Players
+                      Pick {PLAYER_SELECTION_COUNT} Players
                     </label>
                     {selectedPlayers.map((player, i) => (
                       <PlayerSelector
