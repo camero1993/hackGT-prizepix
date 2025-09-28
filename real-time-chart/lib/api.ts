@@ -57,9 +57,22 @@ export async function searchPlayers(query: string, limit: number = 20): Promise<
   return apiCall<Player[]>(`/players?${searchParams.toString()}`);
 }
 
+// Search star players (only the 10 tracked players with stats loaded)
+export async function searchStarPlayers(query: string): Promise<Player[]> {
+  const searchParams = new URLSearchParams();
+  if (query) searchParams.append('search', query);
+  
+  return apiCall<Player[]>(`/players/star?${searchParams.toString()}`);
+}
+
 // Get all players
 export async function getPlayers(limit: number = 600): Promise<Player[]> {
   return apiCall<Player[]>(`/players?active_only=true&limit=${limit}`);
+}
+
+// Get all star players
+export async function getStarPlayers(): Promise<Player[]> {
+  return apiCall<Player[]>(`/players/star`);
 }
 
 // Get player by ID (we'll need to add this endpoint or use search)

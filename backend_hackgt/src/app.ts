@@ -111,6 +111,7 @@ app.get('/', (req: Request, res: Response) => {
       version: '1.0.0',
       endpoints: {
         players: '/players',
+        star_players: '/players/star',
         teams: '/teams',
         games: '/games',
         simulate: '/simulate',
@@ -263,10 +264,17 @@ app.get('/players', handleAsync(async (req: Request, res: Response) => {
       return;
     }
 
-    const { active_only, limit } = queryValidation.data;
+    const { active_only, limit, search } = queryValidation.data as any;
     
     // Build query
-    const query = active_only ? { active: true } : {};
+    const query: any = active_only ? { active: true } : {};
+    
+    // If search provided, match anywhere in the name (case-insensitive)
+    if (search && typeof search === 'string' && search.trim().length > 0) {
+      const term = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // escape regex
+      const containsTerm = new RegExp(term, 'i');
+      query.fullName = { $regex: containsTerm };
+    }
     
     // Check database connection
     if (!mongoose.connection.db) {
@@ -294,6 +302,76 @@ app.get('/players', handleAsync(async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching players:', error);
     res.status(500).json({ error: 'Failed to fetch players' });
+  }
+}));
+
+// Get tracked star players endpoint (only the 10 players with stats loaded)
+app.get('/players/star', handleAsync(async (req: Request, res: Response) => {
+  try {
+    // Validate query parameters
+    const queryValidation = PlayerQuerySchema.safeParse(req.query);
+    if (!queryValidation.success) {
+      res.status(400).json({
+        error: 'Invalid query parameters',
+        details: queryValidation.error.errors
+      });
+      return;
+    }
+
+    const { search } = queryValidation.data as any;
+    
+    // Star player IDs from BettingSimulator
+    const STAR_PLAYER_IDS = [
+      '1628983', // Shai Gilgeous-Alexander
+      '1630169', // Tyrese Haliburton
+      '203999', // Nikola Jokić
+      '1628369', // Jayson Tatum
+      '201939', // Stephen Curry
+      '1628378', // Donovan Mitchell
+      '2544', // LeBron James
+      '1626164', // Devin Booker
+      '203507', // Giannis Antetokounmpo
+      '203954' // Joel Embiid
+    ];
+    
+    // Build query for star players only
+    const query: any = { 
+      _id: { $in: STAR_PLAYER_IDS },
+      active: true 
+    };
+    
+    // If search provided, match anywhere in the name (case-insensitive)
+    if (search && typeof search === 'string' && search.trim().length > 0) {
+      const term = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // escape regex
+      const containsTerm = new RegExp(term, 'i');
+      query.fullName = { $regex: containsTerm };
+    }
+    
+    // Check database connection
+    if (!mongoose.connection.db) {
+      res.status(503).json({ error: 'Database not connected' });
+      return;
+    }
+    
+    // Fetch star players
+    const players = await mongoose.connection.db.collection('players')
+      .find(query, {
+        projection: {
+          _id: 1,
+          fullName: 1,
+          headshotUrl: 1,
+          position: 1,
+          currentTeamId: 1,
+          active: 1
+        }
+      })
+      .toArray();
+
+    const response: PlayerResponse[] = players.map(convertPlayerToResponse);
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching star players:', error);
+    res.status(500).json({ error: 'Failed to fetch star players' });
   }
 }));
 
@@ -1235,7 +1313,7 @@ app.get("/playerGameStats", async (req, res) => {
     .find({ playerId: playerId.toString() })
     .toArray();
 
-  res.json(stats);
+  return res.json(stats);
 });
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {

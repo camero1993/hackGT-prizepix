@@ -34,9 +34,11 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import Link from "next/link";
-import { searchPlayers, getTeamById, Player, Team } from "@/lib/api";
+import { searchPlayers, searchStarPlayers, getTeamById, Player, Team } from "@/lib/api";
 import { NewsSnippet, NewsSnippetsContainer } from "../../../search-page/news-snippet";
 import { NewsApiService, NewsSnippetData } from "@/lib/newsApi";
+import { ContractBettingForm } from "@/components/contract-betting-form";
+import { useContractCreation } from "@/hooks/use-contract-creation";
 
 // Mock data for player stock price
 const stockData = [
@@ -100,7 +102,7 @@ function PlayerSelector({
     if (q.length > 1) {
       setIsSearching(true);
       try {
-        let players = await searchPlayers(q, 500);
+        let players = await searchStarPlayers(q);
         // 🚫 Filter out already selected players
         const selectedIds = selectedPlayers
           .filter(Boolean)
@@ -176,9 +178,23 @@ export default function PlayerPage() {
   const [selectedPlayers, setSelectedPlayers] = useState<(Player | null)[]>(
     Array(PLAYER_SELECTION_COUNT).fill(null)
   );
-  const [selectedPlayers, setSelectedPlayers] = useState<(Player | null)[]>(
-    Array(PLAYER_SELECTION_COUNT).fill(null)
-  );
+  
+  // Contract creation hook
+  const { isLoading: isCreatingContract, error: contractError, createContract } = useContractCreation();
+
+  // Handle contract creation
+  const handleContractCreation = async (contractData: any) => {
+    try {
+      const contract = await createContract(contractData);
+      if (contract) {
+        console.log('Contract created successfully:', contract);
+        // You can add success notification here
+        // Reset form or redirect to contract view
+      }
+    } catch (error) {
+      console.error('Failed to create contract:', error);
+    }
+  };
 
   interface PlayerGameStat {
     gameDateUTC: string;
@@ -231,7 +247,7 @@ export default function PlayerPage() {
 
     setIsSearching(true);
     try {
-      const results = await searchPlayers(query, 10);
+      const results = await searchStarPlayers(query);
       setSearchResults(results);
       setShowSearchResults(true);
     } catch (error) {
@@ -555,120 +571,21 @@ export default function PlayerPage() {
               </CardContent>
             </Card>
 
-            {/* Trading Controls */}
-            {/* Trading Controls */}
+            {/* Contract Betting Form */}
             <div className="grid md:grid-cols-2 gap-6">
-              {/* Buy Section */}
-
-              <Card className="bg-card border-border">
-                <CardHeader>
-                  <CardTitle className="text-primary">Place Bet</CardTitle>
-                  <CardDescription className="text-muted-foreground">
-                    Bet on player performance metrics
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Contract Length Selector */}
-                  {/* Contract Length Selector */}
-                  <div>
-                    <label className="text-sm font-medium mb-2 block text-foreground">
-                      Contract Length
-                    </label>
-                    <div className="flex gap-2">
-                      <Button
-                        variant={contractLength === 3 ? "default" : "outline"}
-                        className={
-                          contractLength === 3 ? "bg-primary text-white" : ""
-                        }
-                        onClick={() => setContractLength(3)}
-                      >
-                        3 Games
-                      </Button>
-                      <Button
-                        variant={contractLength === 5 ? "default" : "outline"}
-                        className={
-                          contractLength === 5 ? "bg-primary text-white" : ""
-                        }
-                        onClick={() => setContractLength(5)}
-                      >
-                        5 Games
-                      </Button>
-                    </div>
-                  </div>
-                  {/* Player Selection Slots */}
-                  <div>
-                    <label className="text-sm font-medium mb-2 block text-foreground">
-                      Pick {PLAYER_SELECTION_COUNT} Players
-                      Pick {PLAYER_SELECTION_COUNT} Players
-                    </label>
-                    {selectedPlayers.map((player, i) => (
-                      <PlayerSelector
-                        key={i}
-                        index={i}
-                        value={player}
-                        onChange={(index, chosenPlayer) => {
-                          const updated = [...selectedPlayers];
-                          updated[index] = chosenPlayer;
-                          setSelectedPlayers(updated);
-                        }}
-                        selectedPlayers={selectedPlayers}
-                      />
-                    ))}
-                  </div>
-                  {/* Stat Type Selector */}
-                  <div>
-                    <label className="text-sm font-medium mb-2 block text-foreground">
-                      Stat Type
-                    </label>
-                    <Select
-                      value={selectedStat}
-                      onValueChange={(value) =>
-                        setSelectedStat(
-                          value as "points" | "rebounds" | "assists"
-                        )
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="points">Points</SelectItem>
-                        <SelectItem value="rebounds">Rebounds</SelectItem>
-                        <SelectItem value="assists">Assists</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Bet Amount Input */}
-                  <div>
-                    <label className="text-sm font-medium mb-2 block text-foreground">
-                      Bet Amount ($)
-                    </label>
-                    <Input
-                      type="number"
-                      placeholder="Enter amount"
-                      value={buyAmount}
-                      onChange={(e) => setBuyAmount(e.target.value)}
-                    />
-                  </div>
-
-                  {/* Place Bet Button */}
-                  <div className="space-y-2">
-                    <Button
-                      className="w-full text-white"
-                      size="lg"
-                      disabled={
-                        !buyAmount ||
-                        Number(buyAmount) <= 0 ||
-                        selectedPlayers.some((p) => !p)
-                      }
-                    >
-                      {buyAmount ? `Place Bet - $${buyAmount}` : "Place Bet"}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
+              <ContractBettingForm
+                onPlaceContract={handleContractCreation}
+                isLoading={isCreatingContract}
+              />
+              
+              {/* Error Display */}
+              {contractError && (
+                <Card className="bg-destructive/10 border-destructive">
+                  <CardContent className="p-4">
+                    <p className="text-destructive text-sm">{contractError}</p>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
 

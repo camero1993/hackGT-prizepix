@@ -81,11 +81,12 @@ export class MultiplierCalculator {
    * @deprecated Use calculateMultiplier with single parlay type instead
    */
   static calculateMixedMultiplier(
-    parlays: (ParlayRequest & { betType: 'flex' | 'power' })[],
+    parlays: ParlayRequest[],
+    betType: 'flex' | 'power',
+    hits: number,
     flexHits: number,
     powerHits: number,
     allHits: boolean
->>>>>>> 2b81f80 (Migrate from Redis to JSON file storage)
   ): MultiplierCalculationResult {
     if (parlays.length === 0) {
       return {
@@ -102,7 +103,7 @@ export class MultiplierCalculator {
       };
     }
 
-    const betType = parlays[0].betType; // assume one type per parlay
+    // betType is now passed as parameter
     const totalBets = parlays.length;
 
     let multiplier = 0;
@@ -192,14 +193,12 @@ export class MultiplierCalculator {
   }
 
   /** Validate configuration */
-  static validateParlayConfiguration(parlays: ParlayRequest[]) {
+  static validateParlayConfiguration(parlays: ParlayRequest[], betType: 'flex' | 'power') {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     if (parlays.length === 0) errors.push("At least one parlay is required");
     if (parlays.length > 6) errors.push("Maximum 6 parlays allowed");
-
-    const betType = parlays[0]?.betType;
 
     if (betType === "flex" && (parlays.length < 3 || parlays.length > 6)) {
       errors.push("Flex requires 3–6 picks");
