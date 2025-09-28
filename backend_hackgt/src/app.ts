@@ -301,11 +301,12 @@ app.get('/players', handleAsync(async (req: Request, res: Response) => {
     }
     
     // Add search filter if provided (searches within the 10 star players only)
-    // Uses "starts with" matching - search term must appear at the beginning of the name
+    // Matches search term at the beginning of first name OR last name
     if (search) {
-      // Escape special regex characters and match from the beginning of the name
+      // Escape special regex characters
       const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      query.fullName = { $regex: `^${escapedSearch}`, $options: 'i' };
+      // Match either at start of full name OR after a space (last name)
+      query.fullName = { $regex: `(^${escapedSearch}|\\s${escapedSearch})`, $options: 'i' };
     }
     
     // Fetch players from database
