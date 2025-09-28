@@ -214,7 +214,7 @@ export class BettingSimulator implements BettingSimulatorInterface {
   /**
    * Simulate a betting contract
    */
-  async simulateContract(contractLength: number, parlays: ParlayRequest[]): Promise<ContractResult> {
+  async simulateContract(contractLength: number, parlays: ParlayRequest[], betType: 'flex' | 'power'): Promise<ContractResult> {
     try {
       console.log(`Starting simulation: ${contractLength} games, ${parlays.length} parlay legs`);
       
@@ -259,7 +259,7 @@ export class BettingSimulator implements BettingSimulatorInterface {
       // Simulate each game
       for (let i = 0; i < contractLength; i++) {
         const game = games[i];
-        const gameResult = await this.simulateGame(game, parlays, balance);
+        const gameResult = await this.simulateGame(game, parlays, betType, balance);
         
         balance = gameResult.balance_after;
         if (gameResult.parlay_hit) {
@@ -347,7 +347,7 @@ export class BettingSimulator implements BettingSimulatorInterface {
   /**
    * Simulate a single game
    */
-  private async simulateGame(game: Game, parlays: ParlayRequest[], balanceBefore: number): Promise<GameResult> {
+  private async simulateGame(game: Game, parlays: ParlayRequest[], betType: 'flex' | 'power', balanceBefore: number): Promise<GameResult> {
     const outcomes: ParlayOutcome[] = [];
     let allHits = true;
     let flexHits = 0;
@@ -362,6 +362,7 @@ export class BettingSimulator implements BettingSimulatorInterface {
         parlayId,
         game._id,
         [], // Will be populated with bet IDs
+        betType,
         betAmount,
         0, // Will be calculated
         this.currentSimulationId || undefined
@@ -389,7 +390,6 @@ export class BettingSimulator implements BettingSimulatorInterface {
         game._id,
         parlay.playerId,
         parlay.stat as 'points' | 'rebounds' | 'assists',
-        parlay.betType,
         expectedValue,
         betAmount,
         multiplier,
@@ -402,7 +402,7 @@ export class BettingSimulator implements BettingSimulatorInterface {
         gameId: game._id,
         playerId: parlay.playerId,
         stat: parlay.stat,
-        betType: parlay.betType,
+        betType: betType,
         betAmount: betAmount.toString(),
         threshold: expectedValue.toString(),
         status: 'pending'
@@ -428,12 +428,11 @@ export class BettingSimulator implements BettingSimulatorInterface {
         stat: parlay.stat,
         threshold: expectedValue, // Keep threshold field for API compatibility
         actual,
-        hit,
-        betType: parlay.betType
+        hit
       });
 
       if (hit) {
-        if (parlay.betType === 'flex') {
+        if (betType === 'flex') {
           flexHits++;
         } else {
           powerHits++;
@@ -444,7 +443,12 @@ export class BettingSimulator implements BettingSimulatorInterface {
     }
 
     // Calculate multiplier based on bet types
-    const multiplierResult = MultiplierCalculator.calculateMultiplier(parlays, flexHits, powerHits, allHits);
+    const multiplierResult = MultiplierCalculator.calculateMultiplier(
+      parlays.map(p => ({ ...p, betType })),
+      flexHits,
+      powerHits,
+      allHits
+    );
     const multiplier = multiplierResult.multiplier;
     const betAmount = balanceBefore * BET_PERCENTAGE;
     const winnings = multiplier > 0 ? betAmount * multiplier : 0;

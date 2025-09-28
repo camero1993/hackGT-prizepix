@@ -52,11 +52,6 @@ const BetSchema = new mongoose.Schema({
     required: true, 
     enum: ['points', 'rebounds', 'assists'] 
   },
-  betType: { 
-    type: String, 
-    required: true, 
-    enum: ['flex', 'power'] 
-  },
   threshold: { type: Number, required: true },
   actual: Number,
   hit: Boolean,
@@ -80,6 +75,11 @@ const ParlaySchema = new mongoose.Schema({
   _id: { type: String, required: true },
   gameId: { type: String, required: true, index: true },
   betIds: [{ type: String, required: true }],
+  betType: { 
+    type: String, 
+    required: true, 
+    enum: ['flex', 'power'] 
+  },
   totalBetAmount: { type: Number, required: true },
   multiplier: { type: Number, required: true },
   potentialWinnings: { type: Number, required: true },
@@ -203,7 +203,6 @@ export class TradeLoggingService {
     gameId: string,
     playerId: string,
     stat: 'points' | 'rebounds' | 'assists',
-    betType: 'flex' | 'power',
     threshold: number,
     betAmount: number,
     multiplier: number,
@@ -215,7 +214,6 @@ export class TradeLoggingService {
       gameId,
       playerId,
       stat,
-      betType,
       threshold,
       betAmount,
       multiplier,
@@ -228,13 +226,49 @@ export class TradeLoggingService {
 
     // Log bet placement
     await this.logAction('bet_placed', {
-      description: `Placed ${betType} bet on ${stat} for player ${playerId}`,
+      description: `Placed bet on ${stat} for player ${playerId}`,
       amount: betAmount,
       balanceBefore: 0, // Will be updated by caller
       balanceAfter: 0   // Will be updated by caller
     }, gameId, betId, simulationId);
 
     return bet;
+  }
+
+  /**
+   * Create a parlay record
+   */
+  static async createParlay(
+    parlayId: string,
+    gameId: string,
+    betIds: string[],
+    betType: 'flex' | 'power',
+    totalBetAmount: number,
+    multiplier: number,
+    simulationId?: string
+  ): Promise<Parlay> {
+    const parlay = await ParlayModel.create({
+      _id: parlayId,
+      gameId,
+      betIds,
+      betType,
+      totalBetAmount,
+      multiplier,
+      potentialWinnings: totalBetAmount * multiplier,
+      status: 'pending',
+      createdAt: new Date(),
+      simulationId
+    });
+
+    // Log parlay creation
+    await this.logAction('parlay_created', {
+      description: `Created ${betType} parlay with ${betIds.length} bets`,
+      amount: totalBetAmount,
+      balanceBefore: 0, // Will be updated by caller
+      balanceAfter: 0   // Will be updated by caller
+    }, gameId, parlayId, simulationId);
+
+    return parlay;
   }
 
   /**
@@ -267,31 +301,6 @@ export class TradeLoggingService {
     }, undefined, betId);
   }
 
-  /**
-   * Create a parlay record
-   */
-  static async createParlay(
-    parlayId: string,
-    gameId: string,
-    betIds: string[],
-    totalBetAmount: number,
-    multiplier: number,
-    simulationId?: string
-  ): Promise<Parlay> {
-    const parlay = await ParlayModel.create({
-      _id: parlayId,
-      gameId,
-      betIds,
-      totalBetAmount,
-      multiplier,
-      potentialWinnings: totalBetAmount * multiplier,
-      status: 'pending',
-      createdAt: new Date(),
-      simulationId
-    });
-
-    return parlay;
-  }
 
   /**
    * Resolve a parlay
@@ -336,11 +345,24 @@ export class TradeLoggingService {
   /**
    * Get bet history for a specific game
    */
-  static async getGameBets(gameId: string): Promise<Bet[]> {
-    return await BetModel
+  static async getGameBets(gameId: string): Promise<(Bet & { betType?: 'flex' | 'power' })[]> {
+    const bets = await BetModel
       .find({ gameId })
       .sort({ createdAt: -1 })
       .lean();
+
+    // For each bet, if it has a parlayId, get the parlay's betType
+    const betsWithBetType = await Promise.all(
+      bets.map(async (bet) => {
+        if (bet.parlayId) {
+          const parlay = await ParlayModel.findById(bet.parlayId).lean();
+          return { ...bet, betType: parlay?.betType };
+        }
+        return bet;
+      })
+    );
+
+    return betsWithBetType;
   }
 
   /**

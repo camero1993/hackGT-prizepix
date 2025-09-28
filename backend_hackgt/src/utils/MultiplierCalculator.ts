@@ -35,7 +35,7 @@ export class MultiplierCalculator {
    * Calculate final multiplier combining flex + power
    */
   static calculateMultiplier(
-    parlays: ParlayRequest[],
+    parlays: (ParlayRequest & { betType: 'flex' | 'power' })[],
     flexHits: number,
     powerHits: number,
     allHits: boolean
@@ -128,15 +128,15 @@ export class MultiplierCalculator {
   }
 
   /** Validate bets */
-  static validateParlayConfiguration(parlays: ParlayRequest[]) {
+  static validateParlayConfiguration(parlays: ParlayRequest[], betType: 'flex' | 'power') {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     if (parlays.length === 0) errors.push('At least one parlay is required');
     if (parlays.length > 6) errors.push('Maximum 6 parlays allowed');
 
-    const flexBets = parlays.filter((p) => p.betType === 'flex');
-    const powerBets = parlays.filter((p) => p.betType === 'power');
+    const flexBets = betType === 'flex' ? parlays : [];
+    const powerBets = betType === 'power' ? parlays : [];
 
     if (flexBets.length > 0 && (flexBets.length < 3 || flexBets.length > 6)) {
       errors.push('Flex requires 3–6 picks');

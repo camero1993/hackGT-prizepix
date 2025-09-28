@@ -28,8 +28,6 @@ import {
 } from './types';
 import { simulatedTimeService } from './services/SimulatedTimeService';
 import { pythonAPIManager } from './services/PythonAPIManager';
-import { redisService } from './services/RedisService';
-import { TradeLoggingService } from './services/TradeLoggingService';
 import mongoose from 'mongoose';
 
 // Initialize Express app
@@ -471,7 +469,8 @@ app.post('/simulate', handleAsync(async (req: Request, res: Response) => {
     // Run simulation
     const result = await bettingSimulator.simulateContract(
       request.contract_length,
-      request.parlays
+      request.parlays,
+      request.betType
     );
     
     const response: SimulationResponse = result;
@@ -510,9 +509,10 @@ app.get('/simulate/example', handleAsync(async (req: Request, res: Response) => 
     const response = {
       example_request: {
         contract_length: 3,
+        betType: 'flex',
         parlays: [
-          { playerId: samplePlayers[0]._id, stat: 'points', betType: 'flex' },
-          { playerId: samplePlayers[1]._id, stat: 'rebounds', betType: 'power' }
+          { playerId: samplePlayers[0]._id, stat: 'points' },
+          { playerId: samplePlayers[1]._id, stat: 'rebounds' }
         ]
       },
       description: 'POST this JSON to /simulate to run a sample simulation',
@@ -529,9 +529,10 @@ app.get('/simulate/example', handleAsync(async (req: Request, res: Response) => 
     res.json({
       example_request: {
         contract_length: 3,
+        betType: 'flex',
         parlays: [
-          { playerId: 'sample_player_id', stat: 'points', betType: 'flex' },
-          { playerId: 'another_player_id', stat: 'rebounds', betType: 'power' }
+          { playerId: 'sample_player_id', stat: 'points' },
+          { playerId: 'another_player_id', stat: 'rebounds' }
         ]
       },
       note: 'Replace player IDs with actual values from /players endpoint',
@@ -908,7 +909,6 @@ app.get('/api/bets/holdings', handleAsync(async (req: Request, res: Response) =>
           gameId: 1,
           playerId: 1,
           stat: 1,
-          betType: 1,
           threshold: 1,
           actual: 1,
           hit: 1,
@@ -1065,7 +1065,7 @@ app.get("/playerGameStats", async (req, res) => {
     .find({ playerId: playerId.toString() })
     .toArray();
 
-  res.json(stats);
+  return res.json(stats);
 });
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
