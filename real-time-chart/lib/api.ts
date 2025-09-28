@@ -58,7 +58,7 @@ export async function searchPlayers(query: string, limit: number = 20): Promise<
 }
 
 // Get all players
-export async function getPlayers(limit: number = 100): Promise<Player[]> {
+export async function getPlayers(limit: number = 600): Promise<Player[]> {
   return apiCall<Player[]>(`/players?active_only=true&limit=${limit}`);
 }
 
