@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer } fro
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Badge } from "@/components/ui/badge"
-import { TrendingUp, TrendingDown } from "lucide-react"
+import { TrendingUp, TrendingDown, BarChart3 } from "lucide-react"
 
 interface BetHolding {
   _id: string
@@ -52,6 +52,23 @@ const generatePortfolioHistory = (currentValue: number) => {
 }
 
 export function BetHoldingsChart({ holdings }: BetHoldingsChartProps) {
+  // Handle empty holdings
+  if (holdings.length === 0) {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-card border-border">
+          <CardContent className="p-12 text-center">
+            <div className="text-muted-foreground mb-4">
+              <BarChart3 className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <p className="text-lg">No bet holdings to display</p>
+              <p className="text-sm">Start placing bets to see your portfolio chart</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   const totalValue = holdings.reduce((sum, bet) => {
     const currentValue = bet.actualWinnings || bet.betAmount
     return sum + currentValue

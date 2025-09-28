@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TrendingUp, TrendingDown, Clock, Play, Pause } from "lucide-react"
 
-// Data structure matching our MongoDB Bet model
+// Data structure matching our enhanced MongoDB Bet model with player data
 interface BetHolding {
   _id: string
   gameId: string
@@ -24,10 +24,53 @@ interface BetHolding {
   resolvedAt?: string
   parlayId?: string
   simulationId?: string
+  // Enriched player data (added by enhanced backend endpoint)
+  playerName?: string
+  playerHeadshot?: string
+  playerPosition?: string
+  playerTeamId?: string
 }
 
 interface BetPortfolioProps {
   holdings: BetHolding[]
+}
+
+// Simple component to display player info with name and headshot using enriched data
+function PlayerInfo({ bet }: { bet: BetHolding }) {
+  const { playerName, playerHeadshot, playerPosition, playerId, stat } = bet
+
+  // If we have enriched player data, use it
+  if (playerName && playerHeadshot) {
+    return (
+      <div className="flex items-center space-x-3">
+        <img 
+          src={playerHeadshot} 
+          alt={playerName}
+          className="w-8 h-8 rounded-full object-cover border-2 border-primary/20"
+          onError={(e) => {
+            e.currentTarget.src = '/placeholder.svg'
+          }}
+        />
+        <div>
+          <h3 className="text-lg font-bold text-foreground">{playerName} - {stat.toUpperCase()}</h3>
+          <p className="text-sm text-muted-foreground">{playerPosition || 'Position N/A'}</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Fallback to player ID if enriched data is not available
+  return (
+    <div className="flex items-center space-x-3">
+      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold">
+        {playerId.slice(-2)}
+      </div>
+      <div>
+        <h3 className="text-lg font-bold text-foreground">Player {playerId} - {stat.toUpperCase()}</h3>
+        <p className="text-sm text-muted-foreground">Player data unavailable</p>
+      </div>
+    </div>
+  )
 }
 
 export function BetPortfolio({ holdings }: BetPortfolioProps) {
@@ -93,9 +136,7 @@ export function BetPortfolio({ holdings }: BetPortfolioProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-lg font-bold text-foreground">
-                        Player {bet.playerId} - {bet.stat.toUpperCase()}
-                      </h3>
+                      <PlayerInfo bet={bet} />
                       <Badge variant="outline" className="text-xs">
                         {bet.betType.toUpperCase()}
                       </Badge>

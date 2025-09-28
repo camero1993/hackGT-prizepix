@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TrendingUp, TrendingDown } from "lucide-react"
@@ -30,15 +30,12 @@ interface PortfolioBalanceChartProps {
 
 export function PortfolioBalanceChart({ totalValue, totalChange, totalChangePercent, balanceHistory = [] }: PortfolioBalanceChartProps) {
   const [selectedPeriod, setSelectedPeriod] = useState("1D")
-  const [chartData, setChartData] = useState(() => {
-    // Use real data if available, otherwise generate mock data
-    return balanceHistory.length > 0 ? transformBalanceHistory(balanceHistory) : generateMockData("1D")
-  })
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([])
 
   const periods = ["1D", "1W", "1M", "3M", "YTD", "1Y", "ALL"]
 
-  // Generate mock data for periods not covered by Redis
-  const generateMockData = (period: string) => {
+  // Generate fallback data when no real data is available
+  const generateFallbackData = (period: string) => {
     const dataPoints = period === "1D" ? 24 : period === "1W" ? 7 : period === "1M" ? 30 : 100
     const data = []
     let currentValue = totalValue - (Math.random() * 200 + 100)
@@ -55,14 +52,23 @@ export function PortfolioBalanceChart({ totalValue, totalChange, totalChangePerc
     return data
   }
 
+  // Initialize chart data
+  useEffect(() => {
+    if (balanceHistory.length > 0) {
+      setChartData(transformBalanceHistory(balanceHistory))
+    } else {
+      setChartData(generateFallbackData("1D"))
+    }
+  }, [balanceHistory, totalValue])
+
   const handlePeriodChange = (period: string) => {
     setSelectedPeriod(period)
     // For short periods, use Redis data if available
     if ((period === "1D" || period === "1W") && balanceHistory.length > 0) {
       setChartData(transformBalanceHistory(balanceHistory))
     } else {
-      // For longer periods, generate mock data or fetch from MongoDB
-      setChartData(generateMockData(period))
+      // For longer periods, generate fallback data
+      setChartData(generateFallbackData(period))
     }
   }
 

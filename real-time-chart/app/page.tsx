@@ -8,115 +8,54 @@ import { BetHoldingsChart } from "@/components/bet-holdings-chart"
 import { BetPortfolio } from "@/components/bet-portfolio"
 import { SportsNavigation } from "@/components/sports-navigation"
 import { PortfolioBalanceChart } from "@/components/portfolio-balance-chart"
+import { useDemoState, useBetHoldings, useBalanceHistory } from "@/hooks/use-api-data"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
 
-// Data structures matching our Redis/MongoDB format
-interface DemoState {
-  balance: number
-  totalBetsPlaced: number
-  totalWinnings: number
-  totalWagered: number
-  activeSimulationId?: string
-  lastUpdated: string
+// Loading skeleton component
+function DashboardSkeleton() {
+  return (
+    <div className="min-h-screen bg-background p-6">
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-64" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
+        </div>
+        <Skeleton className="h-96" />
+      </div>
+    </div>
+  )
 }
 
-interface BalanceHistoryEntry {
-  timestamp: number
-  balance: number
+// Error component
+function DashboardError({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle className="text-destructive">Error Loading Dashboard</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">{error}</p>
+          <Button onClick={onRetry} className="mt-4 w-full">
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  )
 }
-
-interface BetHolding {
-  _id: string
-  gameId: string
-  playerId: string
-  stat: 'points' | 'rebounds' | 'assists'
-  betType: 'flex' | 'power'
-  threshold: number
-  actual?: number
-  hit?: boolean
-  betAmount: number
-  multiplier: number
-  potentialWinnings: number
-  actualWinnings?: number
-  status: 'pending' | 'won' | 'lost'
-  createdAt: string
-  resolvedAt?: string
-  parlayId?: string
-  simulationId?: string
-}
-
-// Mock data matching our backend format
-const mockBetHoldings: BetHolding[] = [
-  {
-    _id: "bet_1",
-    gameId: "game_1",
-    playerId: "201939",
-    stat: "points",
-    betType: "flex",
-    threshold: 25.5,
-    actual: 28,
-    hit: true,
-    betAmount: 100,
-    multiplier: 1.5,
-    potentialWinnings: 150,
-    actualWinnings: 150,
-    status: "won",
-    createdAt: "2025-01-30T10:00:00Z",
-    resolvedAt: "2025-01-30T12:00:00Z"
-  },
-  {
-    _id: "bet_2",
-    gameId: "game_2",
-    playerId: "203999",
-    stat: "rebounds",
-    betType: "power",
-    threshold: 8.3,
-    actual: 6,
-    hit: false,
-    betAmount: 200,
-    multiplier: 2.0,
-    potentialWinnings: 400,
-    actualWinnings: 0,
-    status: "lost",
-    createdAt: "2025-01-30T11:00:00Z",
-    resolvedAt: "2025-01-30T13:00:00Z"
-  },
-  {
-    _id: "bet_3",
-    gameId: "game_3",
-    playerId: "201142",
-    stat: "assists",
-    betType: "flex",
-    threshold: 4.5,
-    actual: undefined,
-    hit: undefined,
-    betAmount: 150,
-    multiplier: 1.5,
-    potentialWinnings: 225,
-    actualWinnings: undefined,
-    status: "pending",
-    createdAt: "2025-01-30T14:00:00Z"
-  }
-]
-
-const mockDemoState: DemoState = {
-  balance: 470.00,
-  totalBetsPlaced: 3,
-  totalWinnings: -30,
-  totalWagered: 450,
-  lastUpdated: "2025-01-30T15:00:00Z"
-}
-
-const mockBalanceHistory: BalanceHistoryEntry[] = [
-  { timestamp: 1738234800000, balance: 1000 },
-  { timestamp: 1738234860000, balance: 900 },
-  { timestamp: 1738234920000, balance: 1050 },
-  { timestamp: 1738234980000, balance: 850 },
-  { timestamp: 1738235040000, balance: 470 }
-]
 
 export default function SportsTrading() {
   const [selectedTab, setSelectedTab] = useState("portfolio")
   const parallaxRef = useRef<HTMLDivElement>(null)
+
+  // API data hooks
+  const { data: demoState, loading: demoLoading, error: demoError, refetch: refetchDemo } = useDemoState()
+  const { data: betHoldings, loading: betsLoading, error: betsError, refetch: refetchBets } = useBetHoldings()
+  const { data: balanceHistory, loading: balanceLoading, error: balanceError, refetch: refetchBalance } = useBalanceHistory()
 
   // Parallax effect
   useEffect(() => {
@@ -155,12 +94,40 @@ export default function SportsTrading() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Calculate portfolio totals from our data format
-  const totalValue = mockDemoState.balance
-  const totalChange = mockDemoState.totalWinnings
-  const totalChangePercent = mockDemoState.totalWagered > 0 ? (totalChange / mockDemoState.totalWagered) * 100 : 0
+  // Handle retry for all data
+  const handleRetry = () => {
+    refetchDemo()
+    refetchBets()
+    refetchBalance()
+  }
 
-  const liveBets = mockBetHoldings.filter((bet) => bet.status === "pending").length
+  // Show loading state
+  if (demoLoading || betsLoading || balanceLoading) {
+    return <DashboardSkeleton />
+  }
+
+  // Show error state
+  if (demoError || betsError || balanceError) {
+    return <DashboardError 
+      error={demoError || betsError || balanceError || 'Unknown error'} 
+      onRetry={handleRetry}
+    />
+  }
+
+  // Show error if no data
+  if (!demoState) {
+    return <DashboardError 
+      error="No data available" 
+      onRetry={handleRetry}
+    />
+  }
+
+  // Calculate portfolio totals from real API data
+  const totalValue = demoState.balance
+  const totalChange = demoState.totalWinnings
+  const totalChangePercent = demoState.totalWagered > 0 ? (totalChange / demoState.totalWagered) * 100 : 0
+
+  const liveBets = betHoldings.filter((bet) => bet.status === "pending").length
 
   return (
     <div className="dark min-h-screen bg-background">
@@ -210,7 +177,7 @@ export default function SportsTrading() {
             totalValue={totalValue}
             totalChange={totalChange}
             totalChangePercent={totalChangePercent}
-            balanceHistory={mockBalanceHistory}
+            balanceHistory={balanceHistory}
           />
 
           {/* Stats Cards */}
@@ -265,11 +232,11 @@ export default function SportsTrading() {
           </TabsList>
 
           <TabsContent value="portfolio" className="mt-6">
-            <BetPortfolio holdings={mockBetHoldings} />
+            <BetPortfolio holdings={betHoldings} />
           </TabsContent>
 
           <TabsContent value="charts" className="mt-6">
-            <BetHoldingsChart holdings={mockBetHoldings} />
+            <BetHoldingsChart holdings={betHoldings} />
           </TabsContent>
 
           <TabsContent value="markets" className="mt-6">

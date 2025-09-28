@@ -9,7 +9,10 @@
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "time:pipeline": "ts-node src/scripts/time-pipeline.ts",
+    "time:test": "ts-node src/scripts/test-time-advancement.ts",
+    "time:demo": "ts-node src/scripts/demo-time-pipeline.ts"
   },
   "keywords": [
     "nba",

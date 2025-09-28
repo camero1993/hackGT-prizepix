@@ -10,7 +10,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import Link from "next/link"
-import { searchPlayers, getTeamById, Player, Team } from "@/lib/api"
+// Note: Player page uses mock data - these types are defined locally
+// import { searchPlayers, getTeamById, Player, Team } from "@/lib/api"
+
+// Local types for player page (using mock data)
+interface Player {
+  id: string
+  fullName: string
+  position?: string
+  teamId?: string
+  headshotUrl?: string
+}
+
+interface Team {
+  id: string
+  name: string
+  city: string
+  tricode: string
+  logoUrl: string
+}
 
 // Mock data for player stock price
 const stockData = [
@@ -56,7 +74,7 @@ export default function PlayerPage() {
     image: "/placeholder.svg",
   }
 
-  // Search for players with debouncing
+  // Mock search function (player page uses mock data)
   const searchPlayersDebounced = useCallback(
     async (query: string) => {
       if (!query.trim()) {
@@ -67,8 +85,14 @@ export default function PlayerPage() {
 
       setIsSearching(true)
       try {
-        const results = await searchPlayers(query, 10)
-        setSearchResults(results)
+        // Mock search results
+        const mockResults: Player[] = [
+          { id: '1', fullName: 'Josh Allen', position: 'QB', teamId: '1', headshotUrl: '/placeholder.svg' },
+          { id: '2', fullName: 'Christian McCaffrey', position: 'RB', teamId: '2', headshotUrl: '/placeholder.svg' },
+          { id: '3', fullName: 'Tyreek Hill', position: 'WR', teamId: '3', headshotUrl: '/placeholder.svg' },
+        ].filter(p => p.fullName.toLowerCase().includes(query.toLowerCase()))
+        
+        setSearchResults(mockResults)
         setShowSearchResults(true)
       } catch (error) {
         console.error('Search failed:', error)
@@ -99,11 +123,18 @@ export default function PlayerPage() {
     setSearchQuery(player.fullName)
     setShowSearchResults(false)
     
-    // Fetch team data if available
+    // Mock team data
     if (player.teamId) {
       try {
-        const team = await getTeamById(player.teamId)
-        setSelectedTeam(team)
+        // Mock team data
+        const mockTeam: Team = {
+          id: player.teamId,
+          name: 'Bills',
+          city: 'Buffalo',
+          tricode: 'BUF',
+          logoUrl: '/placeholder.svg'
+        }
+        setSelectedTeam(mockTeam)
       } catch (error) {
         console.error('Failed to fetch team:', error)
       }
